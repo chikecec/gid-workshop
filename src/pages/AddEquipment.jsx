@@ -1,4 +1,184 @@
-export default function AddEquipment() {
-  return <div style={{ padding: '20px' }}>Add equipment coming soon</div>
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+const equipmentTypes = [
+  'Respiratory support',
+  'Monitoring',
+  'Sterilisation',
+  'Cardiology',
+  'Diagnostic',
+  'Laboratory',
+  'Surgical',
+  'Imaging',
+  'Other',
+]
+
+const presetIntervals = [
+  { label: 'Monthly', days: 30 },
+  { label: 'Every 3 months', days: 90 },
+  { label: 'Every 6 months', days: 180 },
+  { label: 'Annually', days: 365 },
+]
+
+function addDays(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+export default function AddEquipment() {
+  const navigate = useNavigate()
+  const [form, setForm] = useState({
+    name: '',
+    type: '',
+    location: '',
+    intervalType: 'preset',
+    presetDays: null,
+    customDays: '',
+    specificDate: '',
+    pmInstructions: '',
+  })
+
+  const nextPMDate = () => {
+    if (form.intervalType === 'preset' && form.presetDays) return addDays(form.presetDays)
+    if (form.intervalType === 'custom' && form.customDays) return addDays(parseInt(form.customDays))
+    if (form.intervalType === 'specific' && form.specificDate) {
+      return new Date(form.specificDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    }
+    return null
+  }
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
+
+  const canSave = form.name && form.type && form.location &&
+    (form.presetDays || form.customDays || form.specificDate) && form.pmInstructions
+
+  return (
+    <div>
+      <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#185FA5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          Back
+        </button>
+        <div style={{ fontSize: '15px', fontWeight: '500' }}>Add equipment</div>
+      </div>
+
+      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Equipment name <span style={{ color: '#E24B4A' }}>*</span></div>
+          <input
+            value={form.name}
+            onChange={e => set('name', e.target.value)}
+            placeholder="e.g. Ventilator — Drager Evita 4"
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Equipment type <span style={{ color: '#E24B4A' }}>*</span></div>
+          <select
+            value={form.type}
+            onChange={e => set('type', e.target.value)}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none' }}
+          >
+            <option value="">Select type...</option>
+            {equipmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Location / department <span style={{ color: '#E24B4A' }}>*</span></div>
+          <input
+            value={form.location}
+            onChange={e => set('location', e.target.value)}
+            placeholder="e.g. ICU · Ward 4"
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>PM interval <span style={{ color: '#E24B4A' }}>*</span></div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '10px' }}>
+            {presetIntervals.map(p => (
+              <button key={p.days}
+                onClick={() => { set('presetDays', p.days); set('intervalType', 'preset') }}
+                style={{
+                  padding: '8px', borderRadius: '8px', border: '1px solid',
+                  borderColor: form.intervalType === 'preset' && form.presetDays === p.days ? '#85B7EB' : '#ddd',
+                  background: form.intervalType === 'preset' && form.presetDays === p.days ? '#E6F1FB' : '#fff',
+                  color: form.intervalType === 'preset' && form.presetDays === p.days ? '#0C447C' : '#666',
+                  fontSize: '12px', fontWeight: form.intervalType === 'preset' && form.presetDays === p.days ? '500' : '400',
+                  cursor: 'pointer'
+                }}
+              >{p.label}</button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ flex: 1, height: '1px', background: '#eee' }}/>
+            <span style={{ fontSize: '11px', color: '#aaa' }}>or custom</span>
+            <div style={{ flex: 1, height: '1px', background: '#eee' }}/>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #ddd', borderRadius: '8px', padding: '8px 10px' }}>
+              <input
+                type="number"
+                min="1"
+                value={form.customDays}
+                onChange={e => { set('customDays', e.target.value); set('intervalType', 'custom'); set('presetDays', null) }}
+                placeholder="e.g. 45"
+                style={{ width: '50px', border: 'none', fontSize: '13px', outline: 'none', background: 'transparent' }}
+              />
+              <span style={{ fontSize: '12px', color: '#888' }}>days</span>
+            </div>
+            <div style={{ flex: 1 }}>
+              <input
+                type="date"
+                value={form.specificDate}
+                onChange={e => { set('specificDate', e.target.value); set('intervalType', 'specific'); set('presetDays', null) }}
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid #ddd', borderRadius: '8px', fontSize: '12px', outline: 'none' }}
+              />
+            </div>
+          </div>
+
+          {nextPMDate() && (
+            <div style={{ marginTop: '8px', background: '#E1F5EE', border: '1px solid #5DCAA5', borderRadius: '8px', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg width="15" height="15" fill="none" stroke="#0F6E56" strokeWidth="2" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/>
+              </svg>
+              <span style={{ fontSize: '12px', color: '#085041' }}>Next PM: <strong>{nextPMDate()}</strong></span>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>What to do during PM <span style={{ color: '#E24B4A' }}>*</span></div>
+          <textarea
+            value={form.pmInstructions}
+            onChange={e => set('pmInstructions', e.target.value)}
+            placeholder="Describe the steps the technician should follow during this PM..."
+            rows={4}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
+          />
+          <div style={{ fontSize: '10px', color: '#aaa', marginTop: '3px' }}>This note appears as a reminder when PM is due.</div>
+        </div>
+
+      </div>
+
+      <div style={{ position: 'sticky', bottom: '70px', background: '#fff', borderTop: '1px solid #eee', padding: '12px 16px', display: 'flex', gap: '8px' }}>
+        <button onClick={() => navigate(-1)}
+          style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
+          Cancel
+        </button>
+        <button
+          disabled={!canSave}
+          style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: canSave ? '#185FA5' : '#ccc', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: canSave ? 'pointer' : 'not-allowed' }}>
+          Save equipment
+        </button>
+      </div>
+    </div>
+  )
+}

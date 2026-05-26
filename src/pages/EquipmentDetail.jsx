@@ -1,83 +1,140 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { supabase } from '../supabase'
 
-const equipment = [
-  {
-    id: 1, name: 'Ventilator V-03', type: 'Respiratory support',
-    location: 'ICU · Ward 4', status: 'overdue',
-    lastPM: '14 Nov 2025', nextPM: '14 May 2026', interval: 'Every 6 months',
-    pmInstructions: 'Check and replace expiratory filter. Inspect circuit tubing for cracks or leaks. Test alarm thresholds — low pressure, high pressure, disconnect. Calibrate flow sensor. Clean external surfaces with approved disinfectant. Document all readings.',
-    history: [
-      { id: 1, type: 'pm', title: 'Preventive maintenance completed', note: 'Filters replaced, calibration OK', tech: 'Abdullah M.', date: 'Nov 2025', outcome: 'ok' },
-      { id: 2, type: 'repair', title: 'Breakdown repair', note: 'Expiratory filter blocked — replaced', tech: 'Abdullah M.', date: 'Aug 2025', outcome: 'repair' },
-      { id: 3, type: 'pm', title: 'Preventive maintenance completed', note: 'Circuit pressure test passed', tech: 'Sharon K.', date: 'May 2025', outcome: 'ok' },
-    ]
-  },
-  {
-    id: 2, name: 'Autoclave AC-01', type: 'Sterilisation',
-    location: 'Central sterilisation', status: 'due-soon',
-    lastPM: '29 Nov 2025', nextPM: '29 May 2026', interval: 'Every 6 months',
-    pmInstructions: 'Check door seal and gasket. Run test sterilisation cycle. Verify pressure and temperature readings. Clean chamber interior. Check safety valve. Log all readings.',
-    history: [
-      { id: 1, type: 'pm', title: 'Preventive maintenance completed', note: 'Door seal replaced, all readings normal', tech: 'Sharon K.', date: 'Nov 2025', outcome: 'ok' },
-    ]
-  },
-  {
-    id: 3, name: 'Patient monitor PM-07', type: 'Monitoring',
-    location: 'General ward', status: 'ok',
-    lastPM: '3 Apr 2026', nextPM: '3 Jul 2026', interval: 'Every 3 months',
-    pmInstructions: 'Check all leads and sensors. Calibrate SpO2 sensor. Replace battery if needed. Test alarm thresholds. Clean screen and housing.',
-    history: [
-      { id: 1, type: 'pm', title: 'Preventive maintenance completed', note: 'Battery replaced, SpO2 calibrated', tech: 'Sharon K.', date: 'Apr 2026', outcome: 'ok' },
-    ]
-  },
-  {
-    id: 4, name: 'ECG machine EC-02', type: 'Cardiology',
-    location: 'Cardiology', status: 'ok',
-    lastPM: '12 May 2026', nextPM: '12 Aug 2026', interval: 'Every 3 months',
-    pmInstructions: 'Check all 12 leads. Clean electrodes. Test signal quality. Calibrate if needed. Clean housing.',
-    history: [
-      { id: 1, type: 'pm', title: 'Preventive maintenance completed', note: 'All leads checked, calibration passed', tech: 'Abdullah M.', date: 'May 2026', outcome: 'ok' },
-    ]
-  },
-  {
-    id: 5, name: 'Ophthalmoscope OP-01', type: 'Diagnostic',
-    location: 'Eye clinic', status: 'due-soon',
-    lastPM: '27 May 2025', nextPM: '27 May 2026', interval: 'Annually',
-    pmInstructions: 'Clean lenses. Check light source and replace bulb if needed. Test focus mechanism. Clean housing.',
-    history: [
-      { id: 1, type: 'pm', title: 'Preventive maintenance completed', note: 'Bulb replaced, lenses cleaned', tech: 'Abdullah M.', date: 'May 2025', outcome: 'ok' },
-    ]
-  },
-]
-
-const outcomeColors = {
-  ok: { bg: '#E1F5EE', color: '#085041', border: '#5DCAA5', dot: '#1D9E75' },
-  repair: { bg: '#FCEBEB', color: '#791F1F', border: '#F09595', dot: '#E24B4A' },
-  issue: { bg: '#FAEEDA', color: '#633806', border: '#EF9F27', dot: '#EF9F27' },
+function getStatus(item) {
+  if (!item.next_pm_date) return 'ok'
+  const today = new Date()
+  const next = new Date(item.next_pm_date)
+  const diffDays = Math.ceil((next - today) / (1000 * 60 * 60 * 24))
+  if (diffDays < 0) return 'overdue'
+  if (diffDays <= 30) return 'due-soon'
+  return 'ok'
 }
 
-export default function EquipmentDetail() {
+export default function EquipmentDetail({ facility }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [item, setItem] = useState(null)
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
   const [showPMComplete, setShowPMComplete] = useState(false)
   const [outcome, setOutcome] = useState(null)
   const [pmNote, setPmNote] = useState('')
   const [nextPMAdjust, setNextPMAdjust] = useState(null)
+  const [saving, setSaving] = useState(false)
 
-  const item = equipment.find(e => e.id === parseInt(id))
-  if (!item) return <div style={{ padding: '20px' }}>Equipment not found</div>
+  useEffect(() => {
+    supabase
+      .from('equipment')
+      .select('*')
+      .eq('id', id)
+      .single()
+      .then(({ data }) => {
+        if (data) setItem({ ...data, status: getStatus(data) })
+        setLoading(false)
+      })
+
+    supabase
+      .from('repair_logs')
+      .select('*')
+      .eq('equipment_id', id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setLogs(data)
+      })
+  }, [id])
+
+  const handleMarkPMDone = async () => {
+    if (!outcome) return
+    setSaving(true)
+
+    const today = new Date()
+    let nextPMDate = null
+
+    if (outcome === 'ok') {
+      if (item.interval_days) {
+        const d = new Date()
+        d.setDate(d.getDate() + item.interval_days)
+        nextPMDate = d.toISOString().split('T')[0]
+      } else if (item.specific_date) {
+        const d = new Date(item.specific_date)
+        d.setFullYear(d.getFullYear() + 1)
+        nextPMDate = d.toISOString().split('T')[0]
+      }
+    } else if (nextPMAdjust) {
+      const d = new Date()
+      d.setDate(d.getDate() + nextPMAdjust)
+      nextPMDate = d.toISOString().split('T')[0]
+    }
+
+    const { data: { user } } = await supabase.auth.getUser()
+
+    await supabase.from('repair_logs').insert({
+      equipment_id: item.id,
+      facility_id: item.facility_id,
+      log_type: 'pm',
+      what_happened: 'Preventive maintenance completed',
+      what_was_done: pmNote || 'PM completed',
+      device_status: outcome === 'repair' ? 'out-of-service' : outcome === 'issue' ? 'needs-followup' : 'working',
+      outcome: outcome,
+      follow_up_note: pmNote,
+      next_pm_days: nextPMAdjust,
+      technician_id: user.id,
+      technician_name: user.email,
+    })
+
+    await supabase.from('equipment').update({
+      last_pm_date: today.toISOString().split('T')[0],
+      next_pm_date: nextPMDate,
+      status: getStatus({ next_pm_date: nextPMDate }),
+    }).eq('id', item.id)
+
+    setItem(prev => ({ ...prev, last_pm_date: today.toISOString().split('T')[0], next_pm_date: nextPMDate, status: getStatus({ next_pm_date: nextPMDate }) }))
+    setShowPMComplete(false)
+    setOutcome(null)
+    setPmNote('')
+    setNextPMAdjust(null)
+    setSaving(false)
+
+    const { data: updatedLogs } = await supabase
+      .from('repair_logs')
+      .select('*')
+      .eq('equipment_id', id)
+      .order('created_at', { ascending: false })
+    if (updatedLogs) setLogs(updatedLogs)
+  }
+
+  if (loading) return (
+    <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>
+      Loading...
+    </div>
+  )
+
+  if (!item) return (
+    <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>
+      Equipment not found
+    </div>
+  )
 
   const statusColor = item.status === 'overdue' ? '#A32D2D' : item.status === 'due-soon' ? '#854F0B' : '#0F6E56'
   const statusBg = item.status === 'overdue' ? '#FCEBEB' : item.status === 'due-soon' ? '#FAEEDA' : '#E1F5EE'
   const statusBorder = item.status === 'overdue' ? '#F09595' : item.status === 'due-soon' ? '#EF9F27' : '#5DCAA5'
   const statusLabel = item.status === 'overdue' ? 'Overdue' : item.status === 'due-soon' ? 'Due soon' : 'Up to date'
 
+  const outcomeColors = {
+    ok: '#1D9E75',
+    issue: '#854F0B',
+    repair: '#A32D2D',
+  }
+
   return (
     <div>
       <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#185FA5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
           Back
         </button>
         <button style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>
@@ -88,8 +145,8 @@ export default function EquipmentDetail() {
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#FCEBEB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="22" height="22" fill="none" stroke="#A32D2D" strokeWidth="1.8" viewBox="0 0 24 24">
+          <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="22" height="22" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
             </svg>
           </div>
@@ -105,44 +162,51 @@ export default function EquipmentDetail() {
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
           {[
             { label: 'Type', value: item.type },
-            { label: 'PM interval', value: item.interval },
-            { label: 'Last PM done', value: item.lastPM },
-            { label: 'Next PM due', value: item.nextPM, color: statusColor },
+            { label: 'PM interval', value: item.interval_days ? `Every ${item.interval_days} days` : 'Specific date' },
+            { label: 'Last PM done', value: item.last_pm_date ? new Date(item.last_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not yet done' },
+            { label: 'Next PM due', value: item.next_pm_date ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set', color: statusColor },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
               <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
               <span style={{ fontSize: '12px', fontWeight: '500', color: row.color || '#1a1a1a' }}>{row.value}</span>
             </div>
           ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0' }}>
-            <span style={{ fontSize: '12px', color: '#888' }}>Type</span>
-            <span style={{ fontSize: '12px', fontWeight: '500' }}>{item.type}</span>
-          </div>
         </div>
 
         <div style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '12px', padding: '12px 14px' }}>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#0C447C', marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '5px' }}>
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/>
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <path d="M14 2v6h6M16 13H8M16 17H8"/>
             </svg>
             What to do during this PM
           </div>
-          <div style={{ fontSize: '12px', color: '#185FA5', lineHeight: '1.6' }}>{item.pmInstructions}</div>
+          <div style={{ fontSize: '12px', color: '#185FA5', lineHeight: '1.6' }}>{item.pm_instructions}</div>
         </div>
 
-        <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Service history</div>
+        <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Service history
+        </div>
 
-        {item.history.map(h => {
-          const c = outcomeColors[h.outcome] || outcomeColors.ok
+        {logs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: '12px' }}>
+            No service history yet
+          </div>
+        )}
+
+        {logs.map(log => {
+          const dotColor = log.outcome === 'ok' ? '#1D9E75' : log.outcome === 'repair' ? '#E24B4A' : '#EF9F27'
           return (
-            <div key={h.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '10px 12px', display: 'flex', gap: '10px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: c.dot, flexShrink: 0, marginTop: '4px' }}/>
+            <div key={log.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '10px 12px', display: 'flex', gap: '10px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: '4px' }}/>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '12px', fontWeight: '500' }}>{h.title}</div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{h.note}</div>
-                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '3px' }}>{h.tech}</div>
+                <div style={{ fontSize: '12px', fontWeight: '500' }}>{log.what_happened}</div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{log.what_was_done}</div>
+                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '3px' }}>{log.technician_name}</div>
               </div>
-              <div style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>{h.date}</div>
+              <div style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>
+                {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </div>
             </div>
           )
         })}
@@ -164,7 +228,7 @@ export default function EquipmentDetail() {
       )}
 
       {showPMComplete && (
-        <div style={{ margin: '0 16px 16px', border: '1px solid #eee', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ margin: '0 16px 90px', border: '1px solid #eee', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ fontSize: '13px', fontWeight: '500' }}>How did it go?</div>
 
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -176,7 +240,8 @@ export default function EquipmentDetail() {
               <button key={o.key}
                 onClick={() => setOutcome(o.key)}
                 style={{
-                  flex: 1, padding: '8px 4px', borderRadius: '8px', border: `1px solid ${outcome === o.key ? o.border : '#eee'}`,
+                  flex: 1, padding: '8px 4px', borderRadius: '8px',
+                  border: `1px solid ${outcome === o.key ? o.border : '#eee'}`,
                   background: outcome === o.key ? o.bg : '#fff',
                   color: outcome === o.key ? o.color : '#888',
                   fontSize: '11px', fontWeight: outcome === o.key ? '500' : '400', cursor: 'pointer'
@@ -216,17 +281,20 @@ export default function EquipmentDetail() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => { setShowPMComplete(false); setOutcome(null); setPmNote('') }}
+            <button
+              onClick={() => { setShowPMComplete(false); setOutcome(null); setPmNote('') }}
               style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', color: '#666', cursor: 'pointer' }}>
               Cancel
             </button>
             <button
-              disabled={!outcome || (outcome !== 'ok' && !pmNote)}
+              onClick={handleMarkPMDone}
+              disabled={!outcome || (outcome !== 'ok' && !pmNote) || saving}
               style={{
-                flex: 2, padding: '10px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: outcome ? 'pointer' : 'not-allowed',
-                background: !outcome || (outcome !== 'ok' && !pmNote) ? '#ccc' : outcome === 'ok' ? '#1D9E75' : outcome === 'issue' ? '#854F0B' : '#A32D2D'
+                flex: 2, padding: '10px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: '500', color: '#fff',
+                cursor: outcome && (outcome === 'ok' || pmNote) ? 'pointer' : 'not-allowed',
+                background: !outcome || (outcome !== 'ok' && !pmNote) || saving ? '#ccc' : outcomeColors[outcome]
               }}>
-              {outcome === 'ok' ? 'Confirm & save' : outcome === 'issue' ? 'Save & schedule check' : outcome === 'repair' ? 'Save & log repair' : 'Confirm & save'}
+              {saving ? 'Saving...' : outcome === 'ok' ? 'Confirm & save' : outcome === 'issue' ? 'Save & schedule check' : 'Save & log repair'}
             </button>
           </div>
         </div>
@@ -234,3 +302,4 @@ export default function EquipmentDetail() {
     </div>
   )
 }
+

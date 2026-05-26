@@ -13,7 +13,7 @@ const statusBadge = (item) => {
   return { label: 'Up to date', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5' }
 }
 
-export default function Home() {
+export default function Home({ facility, onSwitchFacility }) {
   const navigate = useNavigate()
 
   const overdue = equipment.filter(e => e.status === 'overdue').length
@@ -23,9 +23,14 @@ export default function Home() {
   return (
     <div>
       <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: '16px', fontWeight: '500' }}>Mulago Hospital</div>
-          <div style={{ fontSize: '11px', color: '#999', marginTop: '1px' }}>Abdullah M. · Biomedical tech</div>
+        <div onClick={onSwitchFacility} style={{ cursor: 'pointer' }}>
+          <div style={{ fontSize: '16px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            {facility?.name || 'Select facility'}
+            <svg width="14" height="14" fill="none" stroke="#185FA5" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: '11px', color: '#999', marginTop: '1px' }}>Tap to switch facility</div>
         </div>
         <button
           onClick={() => navigate('/equipment/add')}

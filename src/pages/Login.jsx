@@ -3,7 +3,7 @@ import { supabase } from '../supabase'
 
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState('login')
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'technician' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'technician' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -22,13 +22,22 @@ export default function Login({ onLogin }) {
   }
 
   const handleSignup = async () => {
-    setLoading(true)
     setError('')
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match — please check and try again.')
+      return
+    }
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+    setLoading(true)
     const { data, error } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
     })
     if (error) { setError(error.message); setLoading(false); return }
+
     const { error: profileError } = await supabase.from('profiles').insert({
       id: data.user.id,
       full_name: form.name,
@@ -38,6 +47,10 @@ export default function Login({ onLogin }) {
     else onLogin()
     setLoading(false)
   }
+
+  const canSignup = form.name && form.email && form.password && form.confirmPassword
+  const canLogin = form.email && form.password
+  const passwordsMatch = form.confirmPassword && form.password !== form.confirmPassword
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -98,17 +111,40 @@ export default function Login({ onLogin }) {
           </div>
 
           {mode === 'signup' && (
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Your role</div>
-              <select
-                value={form.role}
-                onChange={e => set('role', e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none' }}>
-                <option value="technician">Biomedical technician</option>
-                <option value="engineer">Biomedical engineer</option>
-                <option value="admin">Administrator</option>
-              </select>
-            </div>
+            <>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Confirm password</div>
+                <input
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={e => set('confirmPassword', e.target.value)}
+                  placeholder="Re-enter your password"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${passwordsMatch ? '#F09595' : '#ddd'}`, fontSize: '13px', outline: 'none' }}
+                />
+                {passwordsMatch && (
+                  <div style={{ fontSize: '11px', color: '#A32D2D', marginTop: '4px' }}>
+                    Passwords do not match
+                  </div>
+                )}
+                {form.confirmPassword && !passwordsMatch && (
+                  <div style={{ fontSize: '11px', color: '#0F6E56', marginTop: '4px' }}>
+                    ✓ Passwords match
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Your role</div>
+                <select
+                  value={form.role}
+                  onChange={e => set('role', e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none' }}>
+                  <option value="technician">Biomedical technician</option>
+                  <option value="engineer">Biomedical engineer</option>
+                  <option value="admin">Administrator</option>
+                </select>
+              </div>
+            </>
           )}
 
           {error && (
@@ -119,10 +155,11 @@ export default function Login({ onLogin }) {
 
           <button
             onClick={mode === 'login' ? handleLogin : handleSignup}
-            disabled={loading || !form.email || !form.password || (mode === 'signup' && !form.name)}
+            disabled={loading || (mode === 'login' ? !canLogin : !canSignup)}
             style={{
-              width: '100%', padding: '12px', borderRadius: '8px', border: 'none', fontSize: '14px', fontWeight: '500', color: '#fff', cursor: 'pointer', marginTop: '4px',
-              background: loading || !form.email || !form.password ? '#ccc' : '#185FA5'
+              width: '100%', padding: '12px', borderRadius: '8px', border: 'none',
+              fontSize: '14px', fontWeight: '500', color: '#fff', cursor: 'pointer', marginTop: '4px',
+              background: loading || (mode === 'login' ? !canLogin : !canSignup) ? '#ccc' : '#185FA5'
             }}>
             {loading ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'}
           </button>

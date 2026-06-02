@@ -19,13 +19,14 @@ function getDaysUntil(dateStr) {
   return Math.ceil((next - today) / (1000 * 60 * 60 * 24))
 }
 
-const days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+const dayLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 
 export default function Schedule({ facility }) {
   const navigate = useNavigate()
   const [equipment, setEquipment] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [selectedDay, setSelectedDay] = useState(null)
 
   useEffect(() => {
     if (!facility) return
@@ -56,14 +57,16 @@ export default function Schedule({ facility }) {
 
   const pmDaysInMonth = equipment
     .filter(e => e.next_pm_date)
-    .map(e => {
+    .reduce((acc, e) => {
       const d = new Date(e.next_pm_date)
       if (d.getMonth() === month && d.getFullYear() === year) {
-        return { day: d.getDate(), status: e.status }
+        const day = d.getDate()
+        if (!acc[day]) acc[day] = { day, status: e.status, items: [] }
+        acc[day].items.push(e)
+        if (e.status === 'overdue') acc[day].status = 'overdue'
       }
-      return null
-    })
-    .filter(Boolean)
+      return acc
+    }, {})
 
   const overdue = equipment.filter(e => e.status === 'overdue')
   const dueSoon = equipment.filter(e => e.status === 'due-soon')
@@ -73,12 +76,14 @@ export default function Schedule({ facility }) {
     const d = new Date(currentDate)
     d.setMonth(d.getMonth() - 1)
     setCurrentDate(d)
+    setSelectedDay(null)
   }
 
   const nextMonth = () => {
     const d = new Date(currentDate)
     d.setMonth(d.getMonth() + 1)
     setCurrentDate(d)
+    setSelectedDay(null)
   }
 
   return (
@@ -106,7 +111,7 @@ export default function Schedule({ facility }) {
 
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
-            {days.map(d => (
+            {dayLabels.map(d => (
               <div key={d} style={{ textAlign: 'center', fontSize: '10px', color: '#aaa', padding: '3px 0' }}>{d}</div>
             ))}
           </div>
@@ -114,21 +119,56 @@ export default function Schedule({ facility }) {
             {cells.map((day, i) => {
               if (!day) return <div key={i} />
               const isToday = isCurrentMonth && day === today.getDate()
-              const pmDay = pmDaysInMonth.find(p => p.day === day)
+              const pmDay = pmDaysInMonth[day]
+              const isSelected = selectedDay === day
               return (
-                <div key={i} style={{
-                  height: '32px', borderRadius: '8px', display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                  background: isToday ? '#185FA5' : 'transparent', position: 'relative'
-                }}>
-                  <span style={{ fontSize: '12px', color: isToday ? '#fff' : '#333', fontWeight: isToday ? '500' : '400' }}>{day}</span>
+                <div key={i}
+                  onClick={() => pmDay ? setSelectedDay(isSelected ? null : day) : null}
+                  style={{
+                    height: '32px', borderRadius: '8px', display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    cursor: pmDay ? 'pointer' : 'default',
+                    background: isToday ? '#185FA5' : isSelected ? '#E6F1FB' : 'transparent',
+                    position: 'relative'
+                  }}>
+                  <span style={{
+                    fontSize: '12px',
+                    color: isToday ? '#fff' : isSelected ? '#185FA5' : '#333',
+                    fontWeight: isToday || isSelected ? '500' : '400'
+                  }}>{day}</span>
                   {pmDay && !isToday && (
-                    <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: pmDay.status === 'overdue' ? '#E24B4A' : '#EF9F27', position: 'absolute', bottom: '3px' }}/>
+                    <div style={{
+                      width: '4px', height: '4px', borderRadius: '50%',
+                      background: pmDay.status === 'overdue' ? '#E24B4A' : '#EF9F27',
+                      position: 'absolute', bottom: '3px'
+                    }}/>
                   )}
                 </div>
               )
             })}
           </div>
+
+          {selectedDay && pmDaysInMonth[selectedDay] && (
+            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>
+                {selectedDay} {currentDate.toLocaleDateString('en-GB', { month: 'long' })} — {pmDaysInMonth[selectedDay].items.length} device{pmDaysInMonth[selectedDay].items.length > 1 ? 's' : ''} due
+              </div>
+              {pmDaysInMonth[selectedDay].items.map(item => (
+                <div key={item.id}
+                  onClick={() => navigate(`/equipment/${item.id}`)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: '1px solid #f5f5f5', cursor: 'pointer' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: item.status === 'overdue' ? '#E24B4A' : '#EF9F27', flexShrink: 0 }}/>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '12px', fontWeight: '500' }}>{item.name}</div>
+                    <div style={{ fontSize: '11px', color: '#888' }}>{item.location}</div>
+                  </div>
+                  <svg width="14" height="14" fill="none" stroke="#185FA5" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: '14px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
             {[
@@ -182,7 +222,7 @@ export default function Schedule({ facility }) {
           <>
             <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Due soon</div>
             {dueSoon.map(item => {
-              const days = getDaysUntil(item.next_pm_date)
+              const d = getDaysUntil(item.next_pm_date)
               return (
                 <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
                   style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
@@ -198,7 +238,7 @@ export default function Schedule({ facility }) {
                     </div>
                   </div>
                   <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#FAEEDA', color: '#854F0B', border: '1px solid #EF9F27', flexShrink: 0 }}>
-                    {days}d
+                    {d}d
                   </span>
                 </div>
               )
@@ -233,6 +273,7 @@ export default function Schedule({ facility }) {
             })}
           </>
         )}
+
       </div>
     </div>
   )

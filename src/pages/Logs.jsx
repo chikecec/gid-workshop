@@ -1,125 +1,109 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-
-const logs = [
-  {
-    id: 1, device: 'Ventilator V-03', location: 'ICU · Ward 4',
-    type: 'repair', date: '26 May 2026', tech: 'Abdullah M.',
-    whatHappened: 'Valve diaphragm torn — device cannot safely ventilate. Taken out of service immediately.',
-    rootCause: 'Condensate buildup over previous weeks accelerating material fatigue.',
-    whatWasDone: 'Attempted temporary repair — unsuccessful. Replacement diaphragm not in stock. Part ordered from supplier. Device tagged out of service and ward notified to use backup unit.',
-    partsUsed: 'Valve diaphragm', labourHours: '1.5', deviceStatus: 'out-of-service',
-    followUp: 'Check again in 3 days once replacement part arrives.',
-  },
-  {
-    id: 2, device: 'Autoclave AC-01', location: 'Central sterilisation',
-    type: 'issue', date: '18 May 2026', tech: 'Sharon K.',
-    whatHappened: 'Door seal showing wear. Sterilisation cycle completing but pressure drop noted.',
-    rootCause: 'Door seal aged — normal wear after 18 months of heavy use.',
-    whatWasDone: 'Documented issue. Ordered replacement seal. Continued use with monitoring.',
-    partsUsed: 'None yet', labourHours: '0.5', deviceStatus: 'working',
-    followUp: 'Replace seal when part arrives.',
-  },
-  {
-    id: 3, device: 'ECG machine EC-02', location: 'Cardiology',
-    type: 'pm', date: '12 May 2026', tech: 'Abdullah M.',
-    whatHappened: 'Scheduled 3-month PM.',
-    rootCause: '',
-    whatWasDone: 'All leads checked, calibration passed, cleaned electrodes and housing.',
-    partsUsed: 'None', labourHours: '1', deviceStatus: 'working',
-    followUp: '',
-  },
-  {
-    id: 4, device: 'Patient monitor PM-07', location: 'General ward',
-    type: 'pm', date: '3 Apr 2026', tech: 'Sharon K.',
-    whatHappened: 'Scheduled quarterly PM.',
-    rootCause: '',
-    whatWasDone: 'Battery replaced. SpO2 sensor calibrated. Screen cleaned.',
-    partsUsed: 'Battery', labourHours: '0.75', deviceStatus: 'working',
-    followUp: '',
-  },
-]
+import { supabase } from '../supabase'
 
 const typeConfig = {
   repair: { label: 'Repair', bg: '#FCEBEB', color: '#791F1F', border: '#F09595', dot: '#E24B4A' },
   issue: { label: 'Issue', bg: '#FAEEDA', color: '#633806', border: '#EF9F27', dot: '#EF9F27' },
   pm: { label: 'PM done', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5', dot: '#1D9E75' },
+  inspection: { label: 'Inspection', bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB', dot: '#185FA5' },
 }
 
-const statusConfig = {
-  'working': { label: 'Working', color: '#085041' },
-  'out-of-service': { label: 'Out of service', color: '#A32D2D' },
-  'needs-followup': { label: 'Needs follow-up', color: '#854F0B' },
-}
-
-const months = ['May 2026', 'April 2026']
-
-export default function Logs() {
+export default function Logs({ facility }) {
   const navigate = useNavigate()
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('All')
   const [selected, setSelected] = useState(null)
+
+  useEffect(() => {
+    if (!facility) return
+    supabase
+      .from('repair_logs')
+      .select('*, equipment(name, location)')
+      .eq('facility_id', facility.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setLogs(data)
+        setLoading(false)
+      })
+  }, [facility])
 
   const filters = ['All', 'Repairs', 'PM done', 'Issues']
 
   const filtered = logs.filter(l => {
     if (filter === 'All') return true
-    if (filter === 'Repairs') return l.type === 'repair'
-    if (filter === 'PM done') return l.type === 'pm'
-    if (filter === 'Issues') return l.type === 'issue'
+    if (filter === 'Repairs') return l.log_type === 'repair'
+    if (filter === 'PM done') return l.log_type === 'pm'
+    if (filter === 'Issues') return l.log_type === 'issue'
     return true
   })
 
+  const groupByMonth = (logs) => {
+    const groups = {}
+    logs.forEach(log => {
+      const month = new Date(log.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+      if (!groups[month]) groups[month] = []
+      groups[month].push(log)
+    })
+    return groups
+  }
+
+  const grouped = groupByMonth(filtered)
+
   if (selected) {
     const log = logs.find(l => l.id === selected)
-    const tc = typeConfig[log.type]
-    const sc = statusConfig[log.deviceStatus]
+    if (!log) return null
+    const tc = typeConfig[log.log_type] || typeConfig.repair
+
     return (
       <div>
         <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#185FA5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
             Logs
           </button>
-          <button style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>Edit</button>
         </div>
 
         <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#FCEBEB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="20" height="20" fill="none" stroke="#A32D2D" strokeWidth="1.8" viewBox="0 0 24 24">
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="20" height="20" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
               </svg>
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '14px', fontWeight: '500' }}>{log.device}</div>
-              <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{log.location}</div>
+              <div style={{ fontSize: '14px', fontWeight: '500' }}>{log.equipment?.name || 'Unknown device'}</div>
+              <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{log.equipment?.location}</div>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
-            <span style={{ fontSize: '11px', color: '#aaa' }}>{log.date}</span>
+            <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
           </div>
 
           <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
             {[
-              { label: 'Technician', value: log.tech },
-              { label: 'Labour time', value: `${log.labourHours} hrs` },
-              { label: 'Parts used', value: log.partsUsed },
-              { label: 'Device status', value: sc.label, color: sc.color },
+              { label: 'Technician', value: log.technician_name },
+              { label: 'Labour time', value: log.labour_hours ? `${log.labour_hours} hrs` : '—' },
+              { label: 'Parts used', value: log.parts_used || '—' },
+              { label: 'Device status', value: log.device_status },
             ].map(row => (
               <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
                 <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
-                <span style={{ fontSize: '12px', fontWeight: '500', color: row.color || '#1a1a1a' }}>{row.value}</span>
+                <span style={{ fontSize: '12px', fontWeight: '500' }}>{row.value}</span>
               </div>
             ))}
           </div>
 
           {[
-            { label: 'What was found', value: log.whatHappened },
-            { label: 'Root cause', value: log.rootCause },
-            { label: 'What was done', value: log.whatWasDone },
-            log.followUp && { label: 'Follow-up note', value: log.followUp },
+            { label: 'What was found', value: log.what_happened },
+            { label: 'Root cause', value: log.root_cause },
+            { label: 'What was done', value: log.what_was_done },
+            log.follow_up_note && { label: 'Follow-up note', value: log.follow_up_note },
           ].filter(Boolean).filter(s => s.value).map(section => (
             <div key={section.label}>
               <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{section.label}</div>
@@ -127,12 +111,13 @@ export default function Logs() {
             </div>
           ))}
 
-          <div onClick={() => navigate(`/equipment/${log.id}`)}
+          <div
+            onClick={() => navigate(`/equipment/${log.equipment_id}`)}
             style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '8px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <svg width="15" height="15" fill="none" stroke="#185FA5" strokeWidth="2" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
             </svg>
-            <span style={{ fontSize: '12px', color: '#0C447C' }}>View full history for {log.device} →</span>
+            <span style={{ fontSize: '12px', color: '#0C447C' }}>View full history for {log.equipment?.name} →</span>
           </div>
         </div>
       </div>
@@ -146,11 +131,6 @@ export default function Logs() {
           <div style={{ fontSize: '16px', fontWeight: '500' }}>Logs</div>
           <div style={{ fontSize: '11px', color: '#999', marginTop: '1px' }}>{logs.length} records</div>
         </div>
-        <button style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer' }}>
-          <svg width="16" height="16" fill="none" stroke="#666" strokeWidth="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-          </svg>
-        </button>
       </div>
 
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -163,58 +143,50 @@ export default function Logs() {
           ))}
         </div>
 
-        <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>May 2026</div>
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#aaa', fontSize: '13px' }}>Loading logs...</div>
+        )}
 
-        {filtered.filter(l => l.date.includes('May')).map(log => {
-          const tc = typeConfig[log.type]
-          return (
-            <div key={log.id} onClick={() => setSelected(log.id)}
-              style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '7px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '500' }}>{log.device}</div>
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{log.location}</div>
+        {!loading && logs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#aaa' }}>
+            <div style={{ fontSize: '14px', marginBottom: '8px' }}>No logs yet</div>
+            <div style={{ fontSize: '12px' }}>Tap "Log a repair" to record your first entry</div>
+          </div>
+        )}
+
+        {Object.entries(grouped).map(([month, monthLogs]) => (
+          <div key={month}>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{month}</div>
+            {monthLogs.map(log => {
+              const tc = typeConfig[log.log_type] || typeConfig.repair
+              return (
+                <div key={log.id} onClick={() => setSelected(log.id)}
+                  style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>{log.equipment?.name || 'Unknown device'}</div>
+                      <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{log.equipment?.location}</div>
+                    </div>
+                    <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`, flexShrink: 0 }}>{tc.label}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#666', paddingLeft: '17px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.what_happened}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '17px' }}>
+                    <span style={{ fontSize: '11px', color: '#aaa' }}>{log.technician_name}</span>
+                    <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </div>
                 </div>
-                <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`, flexShrink: 0 }}>{tc.label}</span>
-              </div>
-              <div style={{ fontSize: '11px', color: '#666', paddingLeft: '17px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.whatHappened}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '17px' }}>
-                <span style={{ fontSize: '11px', color: '#aaa' }}>{log.tech}</span>
-                <span style={{ fontSize: '11px', color: '#aaa' }}>{log.date}</span>
-              </div>
-            </div>
-          )
-        })}
-
-        <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>April 2026</div>
-
-        {filtered.filter(l => l.date.includes('Apr')).map(log => {
-          const tc = typeConfig[log.type]
-          return (
-            <div key={log.id} onClick={() => setSelected(log.id)}
-              style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '7px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '500' }}>{log.device}</div>
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{log.location}</div>
-                </div>
-                <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`, flexShrink: 0 }}>{tc.label}</span>
-              </div>
-              <div style={{ fontSize: '11px', color: '#666', paddingLeft: '17px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.whatHappened}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '17px' }}>
-                <span style={{ fontSize: '11px', color: '#aaa' }}>{log.tech}</span>
-                <span style={{ fontSize: '11px', color: '#aaa' }}>{log.date}</span>
-              </div>
-            </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        ))}
 
         <button
           onClick={() => navigate('/logs/add')}
           style={{ display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-end', background: '#185FA5', border: 'none', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer' }}>
-          <svg width="16" height="16" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <svg width="16" height="16" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
           <span style={{ fontSize: '12px', fontWeight: '500', color: '#fff' }}>Log a repair</span>
         </button>
       </div>

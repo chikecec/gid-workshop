@@ -54,6 +54,11 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
+            onClick={() => navigate('/team')}
+            style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#888' }}>
+            Team
+          </button>
+          <button
             onClick={onSignOut}
             style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#888' }}>
             Sign out
@@ -148,4 +153,3 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
     </div>
   )
 }
-

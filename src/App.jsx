@@ -10,6 +10,7 @@ import Logs from './pages/Logs'
 import AddEquipment from './pages/AddEquipment'
 import EquipmentDetail from './pages/EquipmentDetail'
 import BottomNav from './components/BottomNav'
+import Team from './pages/Team'
 import './App.css'
 
 export default function App() {
@@ -73,6 +74,7 @@ export default function App() {
     <BrowserRouter>
       <div className="app-container">
         <Routes>
+          <Route path="/team" element={<Team facility={facility} />} />
           <Route path="/" element={<Navigate to="/home" />} />
           <Route path="/home" element={
             <Home

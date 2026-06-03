@@ -70,6 +70,12 @@ export default function EquipmentDetail({ facility }) {
 
     const { data: { user } } = await supabase.auth.getUser()
 
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .single()
+
     await supabase.from('repair_logs').insert({
       equipment_id: item.id,
       facility_id: item.facility_id,
@@ -81,7 +87,7 @@ export default function EquipmentDetail({ facility }) {
       follow_up_note: pmNote,
       next_pm_days: nextPMAdjust,
       technician_id: user.id,
-      technician_name: user.email,
+      technician_name: profile?.full_name || user.email,
     })
 
     await supabase.from('equipment').update({
@@ -90,12 +96,12 @@ export default function EquipmentDetail({ facility }) {
       status: getStatus({ next_pm_date: nextPMDate }),
     }).eq('id', item.id)
 
-    setItem(prev => ({ ...prev, last_pm_date: today.toISOString().split('T')[0], next_pm_date: nextPMDate, status: getStatus({ next_pm_date: nextPMDate }) }))
-    setShowPMComplete(false)
-    setOutcome(null)
-    setPmNote('')
-    setNextPMAdjust(null)
-    setSaving(false)
+    setItem(prev => ({
+      ...prev,
+      last_pm_date: today.toISOString().split('T')[0],
+      next_pm_date: nextPMDate,
+      status: getStatus({ next_pm_date: nextPMDate })
+    }))
 
     const { data: updatedLogs } = await supabase
       .from('repair_logs')
@@ -103,6 +109,12 @@ export default function EquipmentDetail({ facility }) {
       .eq('equipment_id', id)
       .order('created_at', { ascending: false })
     if (updatedLogs) setLogs(updatedLogs)
+
+    setShowPMComplete(false)
+    setOutcome(null)
+    setPmNote('')
+    setNextPMAdjust(null)
+    setSaving(false)
   }
 
   if (loading) return (
@@ -137,7 +149,9 @@ export default function EquipmentDetail({ facility }) {
           </svg>
           Back
         </button>
-        <button style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>
+        <button
+          onClick={() => navigate(`/equipment/${id}/edit`)}
+          style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>
           Edit
         </button>
       </div>
@@ -215,7 +229,7 @@ export default function EquipmentDetail({ facility }) {
       {!showPMComplete && (
         <div style={{ position: 'sticky', bottom: '70px', background: '#fff', borderTop: '1px solid #eee', padding: '12px 16px', display: 'flex', gap: '8px' }}>
           <button
-            onClick={() => navigate('/logs')}
+            onClick={() => navigate(`/logs/add?equipment=${id}`)}
             style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
             Log repair
           </button>
@@ -302,4 +316,3 @@ export default function EquipmentDetail({ facility }) {
     </div>
   )
 }
-

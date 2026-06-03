@@ -8,6 +8,7 @@ import Equipment from './pages/Equipment'
 import Schedule from './pages/Schedule'
 import Logs from './pages/Logs'
 import AddEquipment from './pages/AddEquipment'
+import EditEquipment from './pages/EditEquipment'
 import EquipmentDetail from './pages/EquipmentDetail'
 import BottomNav from './components/BottomNav'
 import Team from './pages/Team'
@@ -76,6 +77,7 @@ export default function App() {
       <div className="app-container">
         <Routes>
           <Route path="/team" element={<Team facility={facility} />} />
+          <Route path="/equipment/:id/edit" element={<EditEquipment facility={facility} />} />
           <Route path="/logs/add" element={<AddLog facility={facility} />} />
           <Route path="/" element={<Navigate to="/home" />} />
           <Route path="/home" element={

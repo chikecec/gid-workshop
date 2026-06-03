@@ -40,6 +40,8 @@ export default function EditEquipment({ facility }) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+  const [currentUserId, setCurrentUserId] = useState(null)
+  const [facilityCreatorId, setFacilityCreatorId] = useState(null)
   const [form, setForm] = useState({
     name: '',
     type: '',
@@ -49,29 +51,47 @@ export default function EditEquipment({ facility }) {
     customDays: '',
     specificDate: '',
     pmInstructions: '',
+    addedBy: '',
+    createdBy: null,
   })
 
   useEffect(() => {
-    supabase
-      .from('equipment')
-      .select('*')
-      .eq('id', id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setForm({
-            name: data.name || '',
-            type: data.type || '',
-            location: data.location || '',
-            intervalType: data.interval_type || 'preset',
-            presetDays: data.interval_days || null,
-            customDays: data.interval_type === 'custom' ? data.interval_days : '',
-            specificDate: data.specific_date || '',
-            pmInstructions: data.pm_instructions || '',
-          })
-        }
-        setLoading(false)
-      })
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setCurrentUserId(user.id)
+
+      const { data: equipmentData } = await supabase
+        .from('equipment')
+        .select('*, profiles(full_name, email)')
+        .eq('id', id)
+        .single()
+
+      if (equipmentData) {
+        setForm({
+          name: equipmentData.name || '',
+          type: equipmentData.type || '',
+          location: equipmentData.location || '',
+          intervalType: equipmentData.interval_type || 'preset',
+          presetDays: equipmentData.interval_days || null,
+          customDays: equipmentData.interval_type === 'custom' ? equipmentData.interval_days : '',
+          specificDate: equipmentData.specific_date || '',
+          pmInstructions: equipmentData.pm_instructions || '',
+          addedBy: equipmentData.profiles?.full_name || equipmentData.profiles?.email || 'Unknown',
+          createdBy: equipmentData.created_by,
+        })
+      }
+
+      const { data: facilityData } = await supabase
+        .from('facilities')
+        .select('created_by')
+        .eq('id', facility.id)
+        .single()
+
+      if (facilityData) setFacilityCreatorId(facilityData.created_by)
+
+      setLoading(false)
+    }
+    load()
   }, [id])
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
@@ -286,26 +306,38 @@ export default function EditEquipment({ facility }) {
           />
         </div>
 
+        {form.addedBy && (
+          <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="14" height="14" fill="none" stroke="#888" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span style={{ fontSize: '12px', color: '#888' }}>Added by <strong style={{ color: '#1a1a1a' }}>{form.addedBy}</strong></span>
+          </div>
+        )}
+
         {error && (
           <div style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#A32D2D' }}>
             {error}
           </div>
         )}
 
-        <div style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '12px', padding: '14px' }}>
-          <div style={{ fontSize: '12px', fontWeight: '500', color: '#A32D2D', marginBottom: '6px' }}>
-            Danger zone
+        {facilityCreatorId === currentUserId && (
+          <div style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '12px', padding: '14px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '500', color: '#A32D2D', marginBottom: '6px' }}>
+              Danger zone
+            </div>
+            <div style={{ fontSize: '11px', color: '#791F1F', marginBottom: '10px', lineHeight: '1.5' }}>
+              Deleting this device will also delete all its repair logs and service history. This cannot be undone.
+            </div>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#A32D2D', fontSize: '12px', fontWeight: '500', color: '#fff', cursor: 'pointer' }}>
+              {deleting ? 'Deleting...' : 'Delete this device'}
+            </button>
           </div>
-          <div style={{ fontSize: '11px', color: '#791F1F', marginBottom: '10px', lineHeight: '1.5' }}>
-            Deleting this device will also delete all its repair logs and service history. This cannot be undone.
-          </div>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#A32D2D', fontSize: '12px', fontWeight: '500', color: '#fff', cursor: 'pointer' }}>
-            {deleting ? 'Deleting...' : 'Delete this device'}
-          </button>
-        </div>
+        )}
 
       </div>
 

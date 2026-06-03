@@ -12,6 +12,7 @@ export default function Team({ facility }) {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
   const [isCreator, setIsCreator] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState(null)
 
   useEffect(() => {
     if (!facility) return
@@ -20,29 +21,23 @@ export default function Team({ facility }) {
 
   const loadData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    console.log('Current user ID:', user.id)
+    setCurrentUserId(user.id)
 
-    const { data: facilityData, error: facilityError } = await supabase
+    const { data: facilityData } = await supabase
       .from('facilities')
       .select('created_by')
       .eq('id', facility.id)
       .single()
 
-    console.log('Facility data:', facilityData)
-    console.log('Facility error:', facilityError)
-    console.log('Is creator:', facilityData?.created_by === user.id)
-
     if (facilityData?.created_by === user.id) {
       setIsCreator(true)
 
-      const { data: reqs, error: reqError } = await supabase
+      const { data: reqs } = await supabase
         .from('join_requests')
         .select('*')
         .eq('facility_id', facility.id)
         .eq('status', 'pending')
 
-      console.log('Requests:', reqs)
-      console.log('Request error:', reqError)
       if (reqs) setRequests(reqs)
     }
 
@@ -56,28 +51,21 @@ export default function Team({ facility }) {
   }
 
   const handleApprove = async (request) => {
-    console.log('Approving request:', request)
-
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('profile_facilities')
       .insert({
         profile_id: request.requester_id,
         facility_id: facility.id,
       })
 
-    console.log('Insert result:', data, 'Error:', error)
-
     if (error) {
       alert('Error approving: ' + error.message)
       return
     }
 
-    const { error: updateError } = await supabase
-      .from('join_requests')
+    await supabase.from('join_requests')
       .update({ status: 'approved' })
       .eq('id', request.id)
-
-    console.log('Update error:', updateError)
 
     setRequests(prev => prev.filter(r => r.id !== request.id))
     loadData()
@@ -89,6 +77,24 @@ export default function Team({ facility }) {
       .eq('id', request.id)
 
     setRequests(prev => prev.filter(r => r.id !== request.id))
+  }
+
+  const handleRemove = async (member) => {
+    const confirmed = window.confirm(`Remove ${member.profiles?.full_name} from ${facility.name}?`)
+    if (!confirmed) return
+
+    const { error } = await supabase
+      .from('profile_facilities')
+      .delete()
+      .eq('profile_id', member.profile_id)
+      .eq('facility_id', facility.id)
+
+    if (error) {
+      alert('Error removing member: ' + error.message)
+      return
+    }
+
+    loadData()
   }
 
   const handleInvite = async () => {
@@ -228,6 +234,7 @@ export default function Team({ facility }) {
         {members.map(m => {
           const role = m.profiles?.role || 'technician'
           const rc = roleColors[role] || roleColors.technician
+          const isSelf = m.profile_id === currentUserId
           return (
             <div key={m.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -236,7 +243,10 @@ export default function Team({ facility }) {
                 </span>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '13px', fontWeight: '500' }}>{m.profiles?.full_name || 'Unknown'}</div>
+                <div style={{ fontSize: '13px', fontWeight: '500' }}>
+                  {m.profiles?.full_name || 'Unknown'}
+                  {isSelf && <span style={{ fontSize: '10px', color: '#aaa', marginLeft: '6px' }}>(you)</span>}
+                </div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>
                   Added {new Date(m.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </div>
@@ -244,6 +254,13 @@ export default function Team({ facility }) {
               <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: rc.bg, color: rc.color }}>
                 {role}
               </span>
+              {isCreator && !isSelf && (
+                <button
+                  onClick={() => handleRemove(m)}
+                  style={{ background: 'none', border: '1px solid #F09595', borderRadius: '8px', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', color: '#A32D2D', flexShrink: 0 }}>
+                  Remove
+                </button>
+              )}
             </div>
           )
         })}

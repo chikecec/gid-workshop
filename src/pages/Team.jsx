@@ -5,36 +5,75 @@ import { supabase } from '../supabase'
 export default function Team({ facility }) {
   const navigate = useNavigate()
   const [members, setMembers] = useState([])
+  const [requests, setRequests] = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('technician')
   const [loading, setLoading] = useState(true)
   const [inviting, setInviting] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+  const [isCreator, setIsCreator] = useState(false)
 
   useEffect(() => {
     if (!facility) return
-    supabase
+    loadData()
+  }, [facility])
+
+  const loadData = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const { data: facilityData } = await supabase
+      .from('facilities')
+      .select('created_by')
+      .eq('id', facility.id)
+      .single()
+
+    if (facilityData?.created_by === user.id) {
+      setIsCreator(true)
+      const { data: reqs } = await supabase
+        .from('join_requests')
+        .select('*')
+        .eq('facility_id', facility.id)
+        .eq('status', 'pending')
+      if (reqs) setRequests(reqs)
+    }
+
+    const { data: memberData } = await supabase
       .from('profile_facilities')
       .select('*, profiles(*)')
       .eq('facility_id', facility.id)
-      .then(({ data }) => {
-        if (data) setMembers(data)
-        setLoading(false)
-      })
-  }, [facility])
+    if (memberData) setMembers(memberData)
+
+    setLoading(false)
+  }
+
+  const handleApprove = async (request) => {
+    await supabase.from('profile_facilities').insert({
+      profile_id: request.requester_id,
+      facility_id: facility.id,
+    })
+
+    await supabase.from('join_requests')
+      .update({ status: 'approved' })
+      .eq('id', request.id)
+
+    setRequests(prev => prev.filter(r => r.id !== request.id))
+    loadData()
+  }
+
+  const handleDecline = async (request) => {
+    await supabase.from('join_requests')
+      .update({ status: 'declined' })
+      .eq('id', request.id)
+
+    setRequests(prev => prev.filter(r => r.id !== request.id))
+  }
 
   const handleInvite = async () => {
     if (!inviteEmail) return
     setInviting(true)
     setError('')
     setSuccess('')
-
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id, full_name, role')
-      .eq('id', (await supabase.auth.getUser()).data.user.id)
-      .single()
 
     const { data: invitedUser } = await supabase
       .from('profiles')
@@ -43,8 +82,7 @@ export default function Team({ facility }) {
       .single()
 
     if (!invitedUser) {
-      const { error: inviteError } = await supabase.auth.admin
-      setError('User not found. They need to create an account first, then you can add them.')
+      setError('User not found. They need to create a GID Workshop account first.')
       setInviting(false)
       return
     }
@@ -61,11 +99,7 @@ export default function Team({ facility }) {
     } else {
       setSuccess(`${invitedUser.full_name} added to ${facility.name}`)
       setInviteEmail('')
-      const { data: updated } = await supabase
-        .from('profile_facilities')
-        .select('*, profiles(*)')
-        .eq('facility_id', facility.id)
-      if (updated) setMembers(updated)
+      loadData()
     }
     setInviting(false)
   }
@@ -90,10 +124,43 @@ export default function Team({ facility }) {
 
       <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
+        {isCreator && requests.length > 0 && (
+          <div style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '12px', padding: '14px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '500', color: '#633806', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+              </svg>
+              {requests.length} pending access request{requests.length > 1 ? 's' : ''}
+            </div>
+            {requests.map(req => (
+              <div key={req.id} style={{ background: '#fff', border: '1px solid #EF9F27', borderRadius: '8px', padding: '10px 12px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: '500' }}>{req.requester_name}</div>
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>
+                    Requested {new Date(req.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => handleDecline(req)}
+                    style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '12px', color: '#666', cursor: 'pointer' }}>
+                    Decline
+                  </button>
+                  <button
+                    onClick={() => handleApprove(req)}
+                    style={{ padding: '5px 10px', borderRadius: '8px', border: 'none', background: '#1D9E75', fontSize: '12px', color: '#fff', cursor: 'pointer' }}>
+                    Approve
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '14px' }}>
-          <div style={{ fontSize: '12px', fontWeight: '500', marginBottom: '10px' }}>Add a colleague</div>
+          <div style={{ fontSize: '12px', fontWeight: '500', marginBottom: '10px' }}>Add a colleague directly</div>
           <div style={{ fontSize: '11px', color: '#888', marginBottom: '10px', lineHeight: '1.5' }}>
-            Ask your colleague to create a GID Workshop account first. Then enter their full name below to add them to this facility.
+            Ask your colleague to create a GID Workshop account first. Then enter their full name to add them instantly.
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -105,18 +172,6 @@ export default function Team({ facility }) {
                 placeholder="e.g. Sharon Kamau"
                 style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
               />
-            </div>
-
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '4px' }}>Their role</div>
-              <select
-                value={inviteRole}
-                onChange={e => setInviteRole(e.target.value)}
-                style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none' }}>
-                <option value="technician">Biomedical technician</option>
-                <option value="engineer">Biomedical engineer</option>
-                <option value="admin">Administrator</option>
-              </select>
             </div>
 
             {error && (
@@ -160,7 +215,9 @@ export default function Team({ facility }) {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '13px', fontWeight: '500' }}>{m.profiles?.full_name || 'Unknown'}</div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>Added {new Date(m.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>
+                  Added {new Date(m.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
               </div>
               <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: rc.bg, color: rc.color }}>
                 {role}

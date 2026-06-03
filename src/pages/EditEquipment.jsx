@@ -62,11 +62,21 @@ export default function EditEquipment({ facility }) {
 
       const { data: equipmentData } = await supabase
         .from('equipment')
-        .select('*, profiles(full_name, email)')
+        .select('*')
         .eq('id', id)
         .single()
 
       if (equipmentData) {
+        let addedByName = 'Unknown'
+        if (equipmentData.created_by) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', equipmentData.created_by)
+            .single()
+          if (profile) addedByName = profile.full_name || profile.email || 'Unknown'
+        }
+
         setForm({
           name: equipmentData.name || '',
           type: equipmentData.type || '',
@@ -76,7 +86,7 @@ export default function EditEquipment({ facility }) {
           customDays: equipmentData.interval_type === 'custom' ? equipmentData.interval_days : '',
           specificDate: equipmentData.specific_date || '',
           pmInstructions: equipmentData.pm_instructions || '',
-          addedBy: equipmentData.profiles?.full_name || equipmentData.profiles?.email || 'Unknown',
+          addedBy: addedByName,
           createdBy: equipmentData.created_by,
         })
       }

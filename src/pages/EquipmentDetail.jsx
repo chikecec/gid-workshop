@@ -25,24 +25,39 @@ export default function EquipmentDetail({ facility }) {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    supabase
-      .from('equipment')
-      .select('*, profiles(full_name, email)')
-      .eq('id', id)
-      .single()
-      .then(({ data }) => {
-        if (data) setItem({ ...data, status: getStatus(data) })
-        setLoading(false)
-      })
+    const loadEquipment = async () => {
+      const { data } = await supabase
+        .from('equipment')
+        .select('*')
+        .eq('id', id)
+        .single()
 
-    supabase
-      .from('repair_logs')
-      .select('*')
-      .eq('equipment_id', id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setLogs(data)
-      })
+      if (data) {
+        let addedByName = 'Unknown'
+        if (data.created_by) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', data.created_by)
+            .single()
+          if (profile) addedByName = profile.full_name || profile.email || 'Unknown'
+        }
+        setItem({ ...data, status: getStatus(data), addedByName })
+      }
+      setLoading(false)
+    }
+
+    const loadLogs = async () => {
+      const { data } = await supabase
+        .from('repair_logs')
+        .select('*')
+        .eq('equipment_id', id)
+        .order('created_at', { ascending: false })
+      if (data) setLogs(data)
+    }
+
+    loadEquipment()
+    loadLogs()
   }, [id])
 
   const handleMarkPMDone = async () => {
@@ -179,7 +194,7 @@ export default function EquipmentDetail({ facility }) {
             { label: 'PM interval', value: item.interval_days ? `Every ${item.interval_days} days` : 'Specific date' },
             { label: 'Last PM done', value: item.last_pm_date ? new Date(item.last_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not yet done' },
             { label: 'Next PM due', value: item.next_pm_date ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set', color: statusColor },
-            { label: 'Added by', value: item.profiles?.full_name || item.profiles?.email || 'Unknown' },
+            { label: 'Added by', value: item.addedByName || 'Unknown' },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
               <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
@@ -230,7 +245,7 @@ export default function EquipmentDetail({ facility }) {
       {!showPMComplete && (
         <div style={{ position: 'fixed', bottom: '70px', left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '430px', background: '#fff', borderTop: '1px solid #eee', padding: '12px 16px', display: 'flex', gap: '8px' }}>
           <button
-            onClick={() => navigate(`/logs/add`)}
+            onClick={() => navigate('/logs/add')}
             style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
             Log repair
           </button>

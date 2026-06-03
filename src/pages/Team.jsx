@@ -94,6 +94,12 @@ export default function Team({ facility }) {
       return
     }
 
+    await supabase
+      .from('join_requests')
+      .delete()
+      .eq('requester_id', member.profile_id)
+      .eq('facility_id', facility.id)
+
     loadData()
   }
 

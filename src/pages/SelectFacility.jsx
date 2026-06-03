@@ -10,7 +10,6 @@ export default function SelectFacility({ onSelect }) {
   const [pageLoading, setPageLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [requests, setRequests] = useState([])
   const [requestSent, setRequestSent] = useState({})
 
   useEffect(() => {
@@ -22,12 +21,13 @@ export default function SelectFacility({ onSelect }) {
         .select('facility_id')
         .eq('profile_id', user.id)
 
-      if (memberships && memberships.length > 0) {
-        const ids = memberships.map(m => m.facility_id)
+      const memberFacilityIds = memberships?.map(m => m.facility_id) || []
+
+      if (memberFacilityIds.length > 0) {
         const { data } = await supabase
           .from('facilities')
           .select('*')
-          .in('id', ids)
+          .in('id', memberFacilityIds)
           .order('name')
         if (data) setFacilities(data)
       }
@@ -42,9 +42,16 @@ export default function SelectFacility({ onSelect }) {
         .from('join_requests')
         .select('facility_id, status')
         .eq('requester_id', user.id)
+
       if (existingRequests) {
         const map = {}
-        existingRequests.forEach(r => { map[r.facility_id] = r.status })
+        existingRequests.forEach(r => {
+          if (r.status === 'approved' && !memberFacilityIds.includes(r.facility_id)) {
+            map[r.facility_id] = 'removed'
+          } else {
+            map[r.facility_id] = r.status
+          }
+        })
         setRequestSent(map)
       }
 
@@ -63,12 +70,6 @@ export default function SelectFacility({ onSelect }) {
     setError('')
 
     const { data: { user } } = await supabase.auth.getUser()
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single()
 
     const { data, error } = await supabase
       .from('facilities')
@@ -104,16 +105,14 @@ export default function SelectFacility({ onSelect }) {
       .eq('id', user.id)
       .single()
 
-    const { error } = await supabase.from('join_requests').insert({
+    await supabase.from('join_requests').insert({
       facility_id: facility.id,
       requester_id: user.id,
       requester_name: profile?.full_name || user.email,
       status: 'pending',
     })
 
-    if (!error) {
-      setRequestSent(prev => ({ ...prev, [facility.id]: 'pending' }))
-    }
+    setRequestSent(prev => ({ ...prev, [facility.id]: 'pending' }))
   }
 
   const myFacilityIds = facilities.map(f => f.id)

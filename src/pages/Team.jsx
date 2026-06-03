@@ -7,7 +7,6 @@ export default function Team({ facility }) {
   const [members, setMembers] = useState([])
   const [requests, setRequests] = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('technician')
   const [loading, setLoading] = useState(true)
   const [inviting, setInviting] = useState(false)
   const [success, setSuccess] = useState('')
@@ -21,20 +20,29 @@ export default function Team({ facility }) {
 
   const loadData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
+    console.log('Current user ID:', user.id)
 
-    const { data: facilityData } = await supabase
+    const { data: facilityData, error: facilityError } = await supabase
       .from('facilities')
       .select('created_by')
       .eq('id', facility.id)
       .single()
 
+    console.log('Facility data:', facilityData)
+    console.log('Facility error:', facilityError)
+    console.log('Is creator:', facilityData?.created_by === user.id)
+
     if (facilityData?.created_by === user.id) {
       setIsCreator(true)
-      const { data: reqs } = await supabase
+
+      const { data: reqs, error: reqError } = await supabase
         .from('join_requests')
         .select('*')
         .eq('facility_id', facility.id)
         .eq('status', 'pending')
+
+      console.log('Requests:', reqs)
+      console.log('Request error:', reqError)
       if (reqs) setRequests(reqs)
     }
 
@@ -48,14 +56,28 @@ export default function Team({ facility }) {
   }
 
   const handleApprove = async (request) => {
-    await supabase.from('profile_facilities').insert({
-      profile_id: request.requester_id,
-      facility_id: facility.id,
-    })
+    console.log('Approving request:', request)
 
-    await supabase.from('join_requests')
+    const { data, error } = await supabase
+      .from('profile_facilities')
+      .insert({
+        profile_id: request.requester_id,
+        facility_id: facility.id,
+      })
+
+    console.log('Insert result:', data, 'Error:', error)
+
+    if (error) {
+      alert('Error approving: ' + error.message)
+      return
+    }
+
+    const { error: updateError } = await supabase
+      .from('join_requests')
       .update({ status: 'approved' })
       .eq('id', request.id)
+
+    console.log('Update error:', updateError)
 
     setRequests(prev => prev.filter(r => r.id !== request.id))
     loadData()

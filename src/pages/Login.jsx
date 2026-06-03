@@ -42,6 +42,7 @@ export default function Login({ onLogin }) {
       id: data.user.id,
       full_name: form.name,
       role: form.role,
+      email: form.email.toLowerCase().trim(),
     })
     if (profileError) setError(profileError.message)
     else onLogin()

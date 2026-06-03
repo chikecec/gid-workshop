@@ -112,11 +112,11 @@ export default function Team({ facility }) {
     const { data: invitedUser } = await supabase
       .from('profiles')
       .select('id, full_name')
-      .ilike('full_name', `%${inviteEmail}%`)
+      .eq('email', inviteEmail.toLowerCase().trim())
       .single()
 
     if (!invitedUser) {
-      setError('User not found. They need to create a GID Workshop account first.')
+      setError('No account found with that email. Ask your colleague to create a GID Workshop account first.')
       setInviting(false)
       return
     }
@@ -194,16 +194,17 @@ export default function Team({ facility }) {
         <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '14px' }}>
           <div style={{ fontSize: '12px', fontWeight: '500', marginBottom: '10px' }}>Add a colleague directly</div>
           <div style={{ fontSize: '11px', color: '#888', marginBottom: '10px', lineHeight: '1.5' }}>
-            Ask your colleague to create a GID Workshop account first. Then enter their full name to add them instantly.
+            Ask your colleague to create a GID Workshop account first. Then enter their email to add them instantly.
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '4px' }}>Colleague's full name</div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '4px' }}>Colleague's email address</div>
               <input
+                type="email"
                 value={inviteEmail}
                 onChange={e => setInviteEmail(e.target.value)}
-                placeholder="e.g. Sharon Kamau"
+                placeholder="e.g. sharon@hospital.org"
                 style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
               />
             </div>
@@ -254,6 +255,9 @@ export default function Team({ facility }) {
                   {isSelf && <span style={{ fontSize: '10px', color: '#aaa', marginLeft: '6px' }}>(you)</span>}
                 </div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>
+                  {m.profiles?.email || ''}
+                </div>
+                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '1px' }}>
                   Added {new Date(m.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </div>
               </div>

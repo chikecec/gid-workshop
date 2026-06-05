@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './supabase'
+import { registerPushNotifications } from './notifications'
 import Login from './pages/Login'
 import SelectFacility from './pages/SelectFacility'
 import Home from './pages/Home'
@@ -8,11 +9,11 @@ import Equipment from './pages/Equipment'
 import Schedule from './pages/Schedule'
 import Logs from './pages/Logs'
 import AddEquipment from './pages/AddEquipment'
-import EditEquipment from './pages/EditEquipment'
 import EquipmentDetail from './pages/EquipmentDetail'
-import BottomNav from './components/BottomNav'
-import Team from './pages/Team'
+import EditEquipment from './pages/EditEquipment'
 import AddLog from './pages/AddLog'
+import Team from './pages/Team'
+import BottomNav from './components/BottomNav'
 import './App.css'
 
 export default function App() {
@@ -39,9 +40,14 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleFacilitySelect = (f) => {
+  const handleFacilitySelect = async (f) => {
     setFacility(f)
     localStorage.setItem('gid_facility', JSON.stringify(f))
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      registerPushNotifications(user.id, f.id, supabase)
+    }
   }
 
   const handleSwitchFacility = () => {
@@ -70,15 +76,17 @@ export default function App() {
 
   if (!session) return <Login onLogin={() => {}} />
 
-  if (!facility) return <SelectFacility onSelect={handleFacilitySelect} onSignOut={handleSignOut} />
+  if (!facility) return (
+    <SelectFacility
+      onSelect={handleFacilitySelect}
+      onSignOut={handleSignOut}
+    />
+  )
 
   return (
     <BrowserRouter>
       <div className="app-container">
         <Routes>
-          <Route path="/team" element={<Team facility={facility} />} />
-          <Route path="/equipment/:id/edit" element={<EditEquipment facility={facility} />} />
-          <Route path="/logs/add" element={<AddLog facility={facility} />} />
           <Route path="/" element={<Navigate to="/home" />} />
           <Route path="/home" element={
             <Home
@@ -90,8 +98,11 @@ export default function App() {
           <Route path="/equipment" element={<Equipment facility={facility} />} />
           <Route path="/equipment/add" element={<AddEquipment facility={facility} />} />
           <Route path="/equipment/:id" element={<EquipmentDetail facility={facility} />} />
+          <Route path="/equipment/:id/edit" element={<EditEquipment facility={facility} />} />
           <Route path="/schedule" element={<Schedule facility={facility} />} />
           <Route path="/logs" element={<Logs facility={facility} />} />
+          <Route path="/logs/add" element={<AddLog facility={facility} />} />
+          <Route path="/team" element={<Team facility={facility} />} />
         </Routes>
         <BottomNav />
       </div>

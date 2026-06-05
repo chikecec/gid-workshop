@@ -5,7 +5,7 @@ import webPush from 'https://esm.sh/web-push@3.6.7'
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
+const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 
 webPush.setVapidDetails(
   'mailto:admin@gidworkshop.com',
@@ -14,9 +14,13 @@ webPush.setVapidDetails(
 )
 
 serve(async () => {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
-  const today = new Date()
+  // Use East Africa Time (UTC+3)
+  const now = new Date()
+  const eatOffset = 3 * 60
+  const eatTime = new Date(now.getTime() + eatOffset * 60 * 1000)
+  const today = new Date(eatTime.toISOString().split('T')[0])
   today.setHours(0, 0, 0, 0)
 
   const in7Days = new Date(today)

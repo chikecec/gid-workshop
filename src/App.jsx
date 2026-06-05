@@ -70,7 +70,7 @@ export default function App() {
 
   if (!session) return <Login onLogin={() => {}} />
 
-  if (!facility) return <SelectFacility onSelect={handleFacilitySelect} />
+  if (!facility) return <SelectFacility onSelect={handleFacilitySelect} onSignOut={handleSignOut} />
 
   return (
     <BrowserRouter>

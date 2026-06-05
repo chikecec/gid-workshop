@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 
-export default function SelectFacility({ onSelect }) {
+export default function SelectFacility({ onSelect, onSignOut }) {
   const [facilities, setFacilities] = useState([])
   const [allFacilities, setAllFacilities] = useState([])
   const [mode, setMode] = useState('select')
@@ -11,6 +11,7 @@ export default function SelectFacility({ onSelect }) {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [requestSent, setRequestSent] = useState({})
+  const [pendingRequests, setPendingRequests] = useState([])
 
   useEffect(() => {
     const load = async () => {
@@ -40,19 +41,24 @@ export default function SelectFacility({ onSelect }) {
 
       const { data: existingRequests } = await supabase
         .from('join_requests')
-        .select('facility_id, status')
+        .select('facility_id, status, facilities(name)')
         .eq('requester_id', user.id)
 
       if (existingRequests) {
         const map = {}
+        const pending = []
         existingRequests.forEach(r => {
           if (r.status === 'approved' && !memberFacilityIds.includes(r.facility_id)) {
             map[r.facility_id] = 'removed'
           } else {
             map[r.facility_id] = r.status
           }
+          if (r.status === 'pending') {
+            pending.push({ facility_id: r.facility_id, facility_name: r.facilities?.name })
+          }
         })
         setRequestSent(map)
+        setPendingRequests(pending)
       }
 
       setPageLoading(false)
@@ -60,9 +66,7 @@ export default function SelectFacility({ onSelect }) {
     load()
   }, [])
 
-  const handleSelect = (facility) => {
-    onSelect(facility)
-  }
+  const handleSelect = (facility) => onSelect(facility)
 
   const handleCreate = async () => {
     if (!newFacility.name) return
@@ -83,14 +87,10 @@ export default function SelectFacility({ onSelect }) {
 
     if (error) { setError(error.message); setLoading(false); return }
 
-    const { error: memberError } = await supabase
-      .from('profile_facilities')
-      .insert({
-        profile_id: user.id,
-        facility_id: data.id,
-      })
-
-    if (memberError) { setError(memberError.message); setLoading(false); return }
+    await supabase.from('profile_facilities').insert({
+      profile_id: user.id,
+      facility_id: data.id,
+    })
 
     onSelect(data)
     setLoading(false)
@@ -113,6 +113,30 @@ export default function SelectFacility({ onSelect }) {
     })
 
     setRequestSent(prev => ({ ...prev, [facility.id]: 'pending' }))
+    setPendingRequests(prev => [...prev, { facility_id: facility.id, facility_name: facility.name }])
+    setMode('select')
+  }
+
+  const handleCheckApproval = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const { data: memberships } = await supabase
+      .from('profile_facilities')
+      .select('facility_id')
+      .eq('profile_id', user.id)
+
+    const memberFacilityIds = memberships?.map(m => m.facility_id) || []
+
+    if (memberFacilityIds.length > 0) {
+      const { data } = await supabase
+        .from('facilities')
+        .select('*')
+        .in('id', memberFacilityIds)
+        .order('name')
+      if (data) setFacilities(data)
+    }
+
+    setPageLoading(false)
   }
 
   const myFacilityIds = facilities.map(f => f.id)
@@ -128,10 +152,38 @@ export default function SelectFacility({ onSelect }) {
     <div style={{ minHeight: '100vh', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ width: '100%', maxWidth: '380px', background: '#fff', borderRadius: '16px', padding: '28px 24px', border: '1px solid #eee' }}>
 
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '18px', fontWeight: '500' }}>Select facility</div>
-          <div style={{ fontSize: '13px', color: '#888', marginTop: '4px' }}>Which facility are you working at today?</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div>
+            <div style={{ fontSize: '18px', fontWeight: '500' }}>Select facility</div>
+            <div style={{ fontSize: '13px', color: '#888', marginTop: '4px' }}>Which facility are you working at today?</div>
+          </div>
+          <button
+            onClick={onSignOut}
+            style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#888' }}>
+            Sign out
+          </button>
         </div>
+
+        {pendingRequests.length > 0 && mode === 'select' && facilities.length === 0 && (
+          <div style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '500', color: '#633806', marginBottom: '6px' }}>
+              Waiting for approval
+            </div>
+            <div style={{ fontSize: '12px', color: '#854F0B', lineHeight: '1.6', marginBottom: '10px' }}>
+              You've requested access to the following {pendingRequests.length > 1 ? 'facilities' : 'facility'}. The facility creator needs to approve your request before you can access it.
+            </div>
+            {pendingRequests.map(r => (
+              <div key={r.facility_id} style={{ background: '#fff', border: '1px solid #EF9F27', borderRadius: '8px', padding: '8px 12px', marginBottom: '6px', fontSize: '12px', fontWeight: '500', color: '#633806' }}>
+                {r.facility_name}
+              </div>
+            ))}
+            <button
+              onClick={handleCheckApproval}
+              style={{ width: '100%', padding: '9px', borderRadius: '8px', border: 'none', background: '#185FA5', fontSize: '12px', fontWeight: '500', color: '#fff', cursor: 'pointer', marginTop: '4px' }}>
+              Check if approved
+            </button>
+          </div>
+        )}
 
         <div style={{ display: 'flex', background: '#f5f5f5', borderRadius: '8px', padding: '3px', marginBottom: '16px' }}>
           {['select', 'search', 'create'].map(m => (
@@ -150,7 +202,7 @@ export default function SelectFacility({ onSelect }) {
               </div>
             )}
 
-            {!pageLoading && facilities.length === 0 && (
+            {!pageLoading && facilities.length === 0 && pendingRequests.length === 0 && (
               <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: '13px', lineHeight: '1.6' }}>
                 You haven't joined any facilities yet. Search for your hospital or create a new one.
               </div>

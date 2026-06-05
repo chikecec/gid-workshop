@@ -1,0 +1,18 @@
+{
+  "name": "GID Workshop",
+  "short_name": "GID Workshop",
+  "description": "Biomedical equipment maintenance management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#185FA5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

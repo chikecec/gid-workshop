@@ -21,7 +21,8 @@ export default function EquipmentDetail({ facility }) {
   const [showPMComplete, setShowPMComplete] = useState(false)
   const [outcome, setOutcome] = useState(null)
   const [pmNote, setPmNote] = useState('')
-  const [nextPMAdjust, setNextPMAdjust] = useState(null)
+  const [nextPMOption, setNextPMOption] = useState(null)
+  const [customDays, setCustomDays] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -60,29 +61,43 @@ export default function EquipmentDetail({ facility }) {
     loadLogs()
   }, [id])
 
-  const handleMarkPMDone = async () => {
-    if (!outcome) return
-    setSaving(true)
-
-    const today = new Date()
-    let nextPMDate = null
-
-    if (outcome === 'ok') {
+  const getNextPMDate = () => {
+    if (nextPMOption === 'recalculate') {
       if (item.interval_days) {
         const d = new Date()
         d.setDate(d.getDate() + item.interval_days)
-        nextPMDate = d.toISOString().split('T')[0]
-      } else if (item.specific_date) {
+        return d.toISOString().split('T')[0]
+      }
+      if (item.specific_date) {
         const d = new Date(item.specific_date)
         d.setFullYear(d.getFullYear() + 1)
-        nextPMDate = d.toISOString().split('T')[0]
+        return d.toISOString().split('T')[0]
       }
-    } else if (nextPMAdjust) {
-      const d = new Date()
-      d.setDate(d.getDate() + nextPMAdjust)
-      nextPMDate = d.toISOString().split('T')[0]
     }
+    if (nextPMOption === 'keep') return item.next_pm_date
+    if (nextPMOption === 'custom' && customDays) {
+      const d = new Date()
+      d.setDate(d.getDate() + parseInt(customDays))
+      return d.toISOString().split('T')[0]
+    }
+    return null
+  }
 
+  const getNextPMDisplay = () => {
+    const date = getNextPMDate()
+    if (!date) return null
+    return new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  const canConfirm = outcome && nextPMOption &&
+    (nextPMOption !== 'custom' || customDays) &&
+    (outcome === 'ok' || pmNote)
+
+  const handleMarkPMDone = async () => {
+    if (!canConfirm) return
+    setSaving(true)
+
+    const nextPMDate = getNextPMDate()
     const { data: { user } } = await supabase.auth.getUser()
 
     const { data: profile } = await supabase
@@ -100,20 +115,19 @@ export default function EquipmentDetail({ facility }) {
       device_status: outcome === 'repair' ? 'out-of-service' : outcome === 'issue' ? 'needs-followup' : 'working',
       outcome: outcome,
       follow_up_note: pmNote,
-      next_pm_days: nextPMAdjust,
       technician_id: user.id,
       technician_name: profile?.full_name || user.email,
     })
 
     await supabase.from('equipment').update({
-      last_pm_date: today.toISOString().split('T')[0],
+      last_pm_date: new Date().toISOString().split('T')[0],
       next_pm_date: nextPMDate,
       status: getStatus({ next_pm_date: nextPMDate }),
     }).eq('id', item.id)
 
     setItem(prev => ({
       ...prev,
-      last_pm_date: today.toISOString().split('T')[0],
+      last_pm_date: new Date().toISOString().split('T')[0],
       next_pm_date: nextPMDate,
       status: getStatus({ next_pm_date: nextPMDate })
     }))
@@ -128,20 +142,17 @@ export default function EquipmentDetail({ facility }) {
     setShowPMComplete(false)
     setOutcome(null)
     setPmNote('')
-    setNextPMAdjust(null)
+    setNextPMOption(null)
+    setCustomDays('')
     setSaving(false)
   }
 
   if (loading) return (
-    <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>
-      Loading...
-    </div>
+    <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>Loading...</div>
   )
 
   if (!item) return (
-    <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>
-      Equipment not found
-    </div>
+    <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>Equipment not found</div>
   )
 
   const statusColor = item.status === 'overdue' ? '#A32D2D' : item.status === 'due-soon' ? '#854F0B' : '#0F6E56'
@@ -149,11 +160,15 @@ export default function EquipmentDetail({ facility }) {
   const statusBorder = item.status === 'overdue' ? '#F09595' : item.status === 'due-soon' ? '#EF9F27' : '#5DCAA5'
   const statusLabel = item.status === 'overdue' ? 'Overdue' : item.status === 'due-soon' ? 'Due soon' : 'Up to date'
 
-  const outcomeColors = {
-    ok: '#1D9E75',
-    issue: '#854F0B',
-    repair: '#A32D2D',
-  }
+  const outcomeColors = { ok: '#1D9E75', issue: '#854F0B', repair: '#A32D2D' }
+
+  const recalcDate = item.interval_days
+    ? new Date(Date.now() + item.interval_days * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null
+
+  const existingDate = item.next_pm_date
+    ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null
 
   return (
     <div>
@@ -219,9 +234,7 @@ export default function EquipmentDetail({ facility }) {
         </div>
 
         {logs.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: '12px' }}>
-            No service history yet
-          </div>
+          <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: '12px' }}>No service history yet</div>
         )}
 
         {logs.map(log => {
@@ -259,8 +272,8 @@ export default function EquipmentDetail({ facility }) {
 
       {showPMComplete && (
         <div style={{ margin: '0 16px 90px', border: '1px solid #eee', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ fontSize: '13px', fontWeight: '500' }}>How did it go?</div>
 
+          <div style={{ fontSize: '13px', fontWeight: '500' }}>How did it go?</div>
           <div style={{ display: 'flex', gap: '6px' }}>
             {[
               { key: 'ok', label: 'All good', color: '#0F6E56', bg: '#E1F5EE', border: '#5DCAA5' },
@@ -279,22 +292,59 @@ export default function EquipmentDetail({ facility }) {
             ))}
           </div>
 
-          {outcome && outcome !== 'ok' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ fontSize: '11px', color: '#666', fontWeight: '500' }}>When should the next PM be?</div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {[14, 30, 60].map(d => (
-                  <button key={d}
-                    onClick={() => setNextPMAdjust(d)}
-                    style={{
-                      flex: 1, padding: '6px', borderRadius: '99px', fontSize: '11px',
-                      border: `1px solid ${nextPMAdjust === d ? '#EF9F27' : '#eee'}`,
-                      background: nextPMAdjust === d ? '#FAEEDA' : '#fff',
-                      color: nextPMAdjust === d ? '#633806' : '#888', cursor: 'pointer'
-                    }}>{d} days</button>
-                ))}
+          {outcome && (
+            <>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666' }}>When is the next PM?</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+
+                <div onClick={() => setNextPMOption('recalculate')}
+                  style={{ background: nextPMOption === 'recalculate' ? '#E1F5EE' : '#f9f9f9', border: `1px solid ${nextPMOption === 'recalculate' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'recalculate' ? '#085041' : '#333' }}>
+                    Recalculate from today
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                    {recalcDate ? `Sets next PM to ${recalcDate} (${item.interval_days} days from today)` : 'Sets next PM based on interval'}
+                  </div>
+                </div>
+
+                <div onClick={() => setNextPMOption('keep')}
+                  style={{ background: nextPMOption === 'keep' ? '#E6F1FB' : '#f9f9f9', border: `1px solid ${nextPMOption === 'keep' ? '#85B7EB' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'keep' ? '#0C447C' : '#333' }}>
+                    Keep existing date
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                    {existingDate ? `Next PM stays as ${existingDate}` : 'Keep current next PM date'}
+                  </div>
+                </div>
+
+                <div onClick={() => setNextPMOption('custom')}
+                  style={{ background: nextPMOption === 'custom' ? '#FAEEDA' : '#f9f9f9', border: `1px solid ${nextPMOption === 'custom' ? '#EF9F27' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'custom' ? '#633806' : '#333' }}>
+                    Set a custom date
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>Choose how many days from today</div>
+                  {nextPMOption === 'custom' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        value={customDays}
+                        onChange={e => setCustomDays(e.target.value)}
+                        placeholder="e.g. 45"
+                        onClick={e => e.stopPropagation()}
+                        style={{ width: '70px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+                      />
+                      <span style={{ fontSize: '12px', color: '#888' }}>days from today</span>
+                      {customDays && (
+                        <span style={{ fontSize: '11px', color: '#633806', fontWeight: '500' }}>
+                          = {new Date(Date.now() + parseInt(customDays) * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           <div>
@@ -312,17 +362,17 @@ export default function EquipmentDetail({ facility }) {
 
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
-              onClick={() => { setShowPMComplete(false); setOutcome(null); setPmNote('') }}
+              onClick={() => { setShowPMComplete(false); setOutcome(null); setPmNote(''); setNextPMOption(null); setCustomDays('') }}
               style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', color: '#666', cursor: 'pointer' }}>
               Cancel
             </button>
             <button
               onClick={handleMarkPMDone}
-              disabled={!outcome || (outcome !== 'ok' && !pmNote) || saving}
+              disabled={!canConfirm || saving}
               style={{
                 flex: 2, padding: '10px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: '500', color: '#fff',
-                cursor: outcome && (outcome === 'ok' || pmNote) ? 'pointer' : 'not-allowed',
-                background: !outcome || (outcome !== 'ok' && !pmNote) || saving ? '#ccc' : outcomeColors[outcome]
+                cursor: canConfirm && !saving ? 'pointer' : 'not-allowed',
+                background: !canConfirm || saving ? '#ccc' : outcomeColors[outcome]
               }}>
               {saving ? 'Saving...' : outcome === 'ok' ? 'Confirm & save' : outcome === 'issue' ? 'Save & schedule check' : 'Save & log repair'}
             </button>

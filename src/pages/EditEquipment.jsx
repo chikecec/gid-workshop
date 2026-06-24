@@ -46,6 +46,12 @@ export default function EditEquipment({ facility }) {
     name: '',
     type: '',
     location: '',
+    roomNumber: '',
+    serialNumber: '',
+    modelNumber: '',
+    yearOfManufacture: '',
+    installationDate: '',
+    warrantyExpiryDate: '',
     intervalType: 'preset',
     presetDays: null,
     customDays: '',
@@ -81,6 +87,12 @@ export default function EditEquipment({ facility }) {
           name: equipmentData.name || '',
           type: equipmentData.type || '',
           location: equipmentData.location || '',
+          roomNumber: equipmentData.room_number || '',
+          serialNumber: equipmentData.serial_number || '',
+          modelNumber: equipmentData.model_number || '',
+          yearOfManufacture: equipmentData.year_of_manufacture || '',
+          installationDate: equipmentData.installation_date || '',
+          warrantyExpiryDate: equipmentData.warranty_expiry_date || '',
           intervalType: equipmentData.interval_type || 'preset',
           presetDays: equipmentData.interval_days || null,
           customDays: equipmentData.interval_type === 'custom' ? equipmentData.interval_days : '',
@@ -136,6 +148,12 @@ export default function EditEquipment({ facility }) {
         name: form.name,
         type: form.type,
         location: form.location,
+        room_number: form.roomNumber || null,
+        serial_number: form.serialNumber || null,
+        model_number: form.modelNumber || null,
+        year_of_manufacture: form.yearOfManufacture || null,
+        installation_date: form.installationDate || null,
+        warranty_expiry_date: form.warrantyExpiryDate || null,
         interval_type: form.intervalType,
         interval_days: form.intervalType === 'preset' ? form.presetDays :
           form.intervalType === 'custom' ? parseInt(form.customDays) : null,
@@ -197,6 +215,8 @@ export default function EditEquipment({ facility }) {
 
       <div style={{ padding: '16px', paddingBottom: '140px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
+        <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Basic details</div>
+
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             Equipment name <span style={{ color: '#E24B4A' }}>*</span>
@@ -223,16 +243,94 @@ export default function EditEquipment({ facility }) {
           </select>
         </div>
 
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
-            Location / department <span style={{ color: '#E24B4A' }}>*</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
+              Department <span style={{ color: '#E24B4A' }}>*</span>
+            </div>
+            <input
+              value={form.location}
+              onChange={e => set('location', e.target.value)}
+              placeholder="e.g. ICU"
+              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+            />
           </div>
-          <input
-            value={form.location}
-            onChange={e => set('location', e.target.value)}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
-          />
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
+              Room number <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
+            </div>
+            <input
+              value={form.roomNumber}
+              onChange={e => set('roomNumber', e.target.value)}
+              placeholder="e.g. Room 14"
+              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+            />
+          </div>
         </div>
+
+        <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '4px' }}>Device identification <span style={{ color: '#aaa', fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Serial number</div>
+            <input
+              value={form.serialNumber}
+              onChange={e => set('serialNumber', e.target.value)}
+              placeholder="e.g. SN-123456"
+              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Model number</div>
+            <input
+              value={form.modelNumber}
+              onChange={e => set('modelNumber', e.target.value)}
+              placeholder="e.g. Evita XL"
+              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Year of manufacture</div>
+            <input
+              value={form.yearOfManufacture}
+              onChange={e => set('yearOfManufacture', e.target.value)}
+              placeholder="e.g. 2019"
+              maxLength={4}
+              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Installation date</div>
+            <input
+              type="date"
+              value={form.installationDate}
+              onChange={e => set('installationDate', e.target.value)}
+              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+            />
+          </div>
+        </div>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Warranty expiry date</div>
+          <input
+            type="date"
+            value={form.warrantyExpiryDate}
+            onChange={e => set('warrantyExpiryDate', e.target.value)}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+          />
+          {form.warrantyExpiryDate && (
+            <div style={{ marginTop: '6px', fontSize: '11px', color: new Date(form.warrantyExpiryDate) < new Date() ? '#A32D2D' : '#0F6E56' }}>
+              {new Date(form.warrantyExpiryDate) < new Date()
+                ? '⚠ Warranty has expired'
+                : `✓ Warranty valid until ${new Date(form.warrantyExpiryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+            </div>
+          )}
+        </div>
+
+        <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '4px' }}>Maintenance schedule</div>
 
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>

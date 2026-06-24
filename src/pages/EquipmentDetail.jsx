@@ -160,6 +160,10 @@ export default function EquipmentDetail({ facility }) {
   const statusBorder = item.status === 'overdue' ? '#F09595' : item.status === 'due-soon' ? '#EF9F27' : '#5DCAA5'
   const statusLabel = item.status === 'overdue' ? 'Overdue' : item.status === 'due-soon' ? 'Due soon' : 'Up to date'
 
+  const warrantyStatus = item.warranty_expiry_date
+    ? new Date(item.warranty_expiry_date) < new Date() ? 'expired' : 'valid'
+    : null
+
   const outcomeColors = { ok: '#1D9E75', issue: '#854F0B', repair: '#A32D2D' }
 
   const recalcDate = item.interval_days
@@ -196,7 +200,9 @@ export default function EquipmentDetail({ facility }) {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '15px', fontWeight: '500' }}>{item.name}</div>
-            <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{item.location}</div>
+            <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
+              {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
+            </div>
           </div>
           <span style={{ fontSize: '10px', padding: '3px 9px', borderRadius: '99px', background: statusBg, color: statusColor, border: `1px solid ${statusBorder}` }}>
             {statusLabel}
@@ -204,12 +210,35 @@ export default function EquipmentDetail({ facility }) {
         </div>
 
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '9px 0 4px' }}>Device info</div>
           {[
             { label: 'Type', value: item.type },
+            item.serial_number && { label: 'Serial number', value: item.serial_number },
+            item.model_number && { label: 'Model', value: item.model_number },
+            item.year_of_manufacture && { label: 'Year of manufacture', value: item.year_of_manufacture },
+            item.installation_date && { label: 'Installation date', value: new Date(item.installation_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) },
+            item.warranty_expiry_date && {
+              label: 'Warranty',
+              value: warrantyStatus === 'expired'
+                ? `Expired ${new Date(item.warranty_expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                : `Valid until ${new Date(item.warranty_expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
+              color: warrantyStatus === 'expired' ? '#A32D2D' : '#0F6E56'
+            },
+            { label: 'Added by', value: item.addedByName || 'Unknown' },
+          ].filter(Boolean).map(row => (
+            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
+              <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
+              <span style={{ fontSize: '12px', fontWeight: '500', color: row.color || '#1a1a1a' }}>{row.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '9px 0 4px' }}>Maintenance</div>
+          {[
             { label: 'PM interval', value: item.interval_days ? `Every ${item.interval_days} days` : 'Specific date' },
             { label: 'Last PM done', value: item.last_pm_date ? new Date(item.last_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not yet done' },
             { label: 'Next PM due', value: item.next_pm_date ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set', color: statusColor },
-            { label: 'Added by', value: item.addedByName || 'Unknown' },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
               <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
@@ -272,8 +301,8 @@ export default function EquipmentDetail({ facility }) {
 
       {showPMComplete && (
         <div style={{ margin: '0 16px 90px', border: '1px solid #eee', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
           <div style={{ fontSize: '13px', fontWeight: '500' }}>How did it go?</div>
+
           <div style={{ display: 'flex', gap: '6px' }}>
             {[
               { key: 'ok', label: 'All good', color: '#0F6E56', bg: '#E1F5EE', border: '#5DCAA5' },
@@ -296,12 +325,9 @@ export default function EquipmentDetail({ facility }) {
             <>
               <div style={{ fontSize: '11px', fontWeight: '500', color: '#666' }}>When is the next PM?</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-
                 <div onClick={() => setNextPMOption('recalculate')}
                   style={{ background: nextPMOption === 'recalculate' ? '#E1F5EE' : '#f9f9f9', border: `1px solid ${nextPMOption === 'recalculate' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'recalculate' ? '#085041' : '#333' }}>
-                    Recalculate from today
-                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'recalculate' ? '#085041' : '#333' }}>Recalculate from today</div>
                   <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
                     {recalcDate ? `Sets next PM to ${recalcDate} (${item.interval_days} days from today)` : 'Sets next PM based on interval'}
                   </div>
@@ -309,9 +335,7 @@ export default function EquipmentDetail({ facility }) {
 
                 <div onClick={() => setNextPMOption('keep')}
                   style={{ background: nextPMOption === 'keep' ? '#E6F1FB' : '#f9f9f9', border: `1px solid ${nextPMOption === 'keep' ? '#85B7EB' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'keep' ? '#0C447C' : '#333' }}>
-                    Keep existing date
-                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'keep' ? '#0C447C' : '#333' }}>Keep existing date</div>
                   <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
                     {existingDate ? `Next PM stays as ${existingDate}` : 'Keep current next PM date'}
                   </div>
@@ -319,9 +343,7 @@ export default function EquipmentDetail({ facility }) {
 
                 <div onClick={() => setNextPMOption('custom')}
                   style={{ background: nextPMOption === 'custom' ? '#FAEEDA' : '#f9f9f9', border: `1px solid ${nextPMOption === 'custom' ? '#EF9F27' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'custom' ? '#633806' : '#333' }}>
-                    Set a custom date
-                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'custom' ? '#633806' : '#333' }}>Set a custom date</div>
                   <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>Choose how many days from today</div>
                   {nextPMOption === 'custom' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>

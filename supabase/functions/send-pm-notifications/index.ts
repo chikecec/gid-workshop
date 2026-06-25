@@ -33,49 +33,89 @@ serve(async () => {
   const in7Str = in7Days.toISOString().split('T')[0]
   const in21Str = in21Days.toISOString().split('T')[0]
 
-  const { data: equipment } = await supabase
-    .from('equipment')
-    .select('id, name, location, next_pm_date, facility_id')
-
-  if (!equipment) return new Response('No equipment found', { status: 200 })
-
   const notifications = []
 
-  for (const item of equipment) {
-    if (!item.next_pm_date) continue
+  // PM notifications — skip decommissioned and out-of-service
+  const { data: equipment } = await supabase
+    .from('equipment')
+    .select('id, name, location, next_pm_date, facility_id, operational_status')
 
-    const pmDate = item.next_pm_date.split('T')[0]
-    let title = null
-    let body = null
+  if (equipment) {
+    for (const item of equipment) {
+      if (!item.next_pm_date) continue
+      if (item.operational_status === 'decommissioned') continue
+      if (item.operational_status === 'out-of-service') continue
 
-    if (pmDate === todayStr) {
-      title = `PM due today — ${item.name}`
-      body = `${item.location} · Tap to view checklist and mark done`
-    } else if (pmDate === in7Str) {
-      title = `PM due in 7 days — ${item.name}`
-      body = `${item.location} · Schedule time to complete it`
-    } else if (pmDate === in21Str) {
-      title = `PM due in 3 weeks — ${item.name}`
-      body = `${item.location} · Good time to check spare parts`
-    } else if (pmDate < todayStr) {
-      title = `Overdue PM — ${item.name}`
-      body = `${item.location} · Please complete or reschedule`
-    }
+      const pmDate = item.next_pm_date.split('T')[0]
+      let title = null
+      let body = null
 
-    if (!title) continue
+      if (pmDate === todayStr) {
+        title = `PM due today — ${item.name}`
+        body = `${item.location} · Tap to view checklist and mark done`
+      } else if (pmDate === in7Str) {
+        title = `PM due in 7 days — ${item.name}`
+        body = `${item.location} · Schedule time to complete it`
+      } else if (pmDate === in21Str) {
+        title = `PM due in 3 weeks — ${item.name}`
+        body = `${item.location} · Good time to check spare parts`
+      } else if (pmDate < todayStr) {
+        title = `Overdue PM — ${item.name}`
+        body = `${item.location} · Please complete or reschedule`
+      }
 
-    const { data: tokens } = await supabase
-      .from('push_tokens')
-      .select('token')
-      .eq('facility_id', item.facility_id)
+      if (!title) continue
 
-    if (!tokens) continue
+      const { data: tokens } = await supabase
+        .from('push_tokens')
+        .select('token')
+        .eq('facility_id', item.facility_id)
 
-    for (const { token } of tokens) {
-      notifications.push({ token, title, body, equipmentId: item.id })
+      if (!tokens) continue
+
+      for (const { token } of tokens) {
+        notifications.push({ token, title, body, equipmentId: item.id })
+      }
     }
   }
 
+  // Follow-up reminder notifications
+  const { data: reminders } = await supabase
+    .from('follow_up_reminders')
+    .select('*, equipment(name, location, facility_id)')
+    .eq('status', 'pending')
+    .eq('reminder_date', todayStr)
+
+  if (reminders) {
+    for (const reminder of reminders) {
+      const { data: tokens } = await supabase
+        .from('push_tokens')
+        .select('token')
+        .eq('facility_id', reminder.equipment?.facility_id)
+
+      if (!tokens) continue
+
+      const title = `Follow-up due — ${reminder.equipment?.name}`
+      const body = `${reminder.reminder_note} · ${reminder.equipment?.location}`
+
+      for (const { token } of tokens) {
+        notifications.push({
+          token,
+          title,
+          body,
+          equipmentId: reminder.equipment_id
+        })
+      }
+
+      // Mark reminder as sent
+      await supabase
+        .from('follow_up_reminders')
+        .update({ status: 'sent' })
+        .eq('id', reminder.id)
+    }
+  }
+
+  // Send all notifications
   let sent = 0
   let failed = 0
 

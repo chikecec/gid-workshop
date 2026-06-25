@@ -335,7 +335,7 @@ export default function EquipmentDetail({ facility }) {
 
                 <div onClick={() => setNextPMOption('keep')}
                   style={{ background: nextPMOption === 'keep' ? '#E6F1FB' : '#f9f9f9', border: `1px solid ${nextPMOption === 'keep' ? '#85B7EB' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'keep' ? '#0C447C' : '#333' }}>Keep existing date</div>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'keep' ? '#0C447C' : '#333' }}>Continue on original schedule</div>
                   <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
                     {existingDate ? `Next PM stays as ${existingDate}` : 'Keep current next PM date'}
                   </div>

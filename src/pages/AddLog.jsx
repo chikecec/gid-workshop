@@ -2,9 +2,41 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
+const quickReminderOptions = [
+  { label: '3 days', days: 3 },
+  { label: '1 week', days: 7 },
+  { label: '2 weeks', days: 14 },
+  { label: '1 month', days: 30 },
+]
+
+const reminderNoteOptions = [
+  'Waiting for spare part',
+  'Waiting for management approval',
+  'Check repair outcome',
+  'Follow up with supplier',
+  'Other',
+]
+
+function addDaysISO(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
+function getNextOccurrence(nextPMDate, intervalDays) {
+  if (!nextPMDate || !intervalDays) return nextPMDate
+  const today = new Date()
+  let next = new Date(nextPMDate)
+  while (next <= today) {
+    next.setDate(next.getDate() + intervalDays)
+  }
+  return next.toISOString().split('T')[0]
+}
+
 export default function AddLog({ facility }) {
   const navigate = useNavigate()
   const [equipment, setEquipment] = useState([])
+  const [selectedEquipment, setSelectedEquipment] = useState(null)
   const [form, setForm] = useState({
     equipmentId: '',
     logType: 'repair',
@@ -13,8 +45,15 @@ export default function AddLog({ facility }) {
     whatWasDone: '',
     partsUsed: '',
     labourHours: '',
-    deviceStatus: 'working',
+    deviceStatus: '',
     followUpNote: '',
+    needsReminder: false,
+    reminderDays: null,
+    reminderCustomDate: '',
+    reminderNote: '',
+    reminderNoteCustom: '',
+    pmScheduleAction: '',
+    customPMDays: '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -23,7 +62,7 @@ export default function AddLog({ facility }) {
     if (!facility) return
     supabase
       .from('equipment')
-      .select('id, name, location')
+      .select('id, name, location, next_pm_date, interval_days, operational_status')
       .eq('facility_id', facility.id)
       .order('name')
       .then(({ data }) => {
@@ -33,7 +72,51 @@ export default function AddLog({ facility }) {
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
 
-  const canSave = form.equipmentId && form.whatHappened && form.whatWasDone
+  const handleEquipmentSelect = (id) => {
+    set('equipmentId', id)
+    const eq = equipment.find(e => e.id === id)
+    setSelectedEquipment(eq || null)
+    set('pmScheduleAction', '')
+  }
+
+  const getReminderDate = () => {
+    if (form.reminderDays) return addDaysISO(form.reminderDays)
+    if (form.reminderCustomDate) return form.reminderCustomDate
+    return null
+  }
+
+  const getNextPMDate = () => {
+    if (!selectedEquipment) return null
+
+    if (form.pmScheduleAction === 'keep') {
+      return getNextOccurrence(selectedEquipment.next_pm_date, selectedEquipment.interval_days)
+    }
+
+    if (form.pmScheduleAction === 'recalculate') {
+      if (selectedEquipment.interval_days) return addDaysISO(selectedEquipment.interval_days)
+      return null
+    }
+
+    if (form.pmScheduleAction === 'custom' && form.customPMDays) {
+      return addDaysISO(parseInt(form.customPMDays))
+    }
+
+    return selectedEquipment.next_pm_date
+  }
+
+  const nextOccurrenceDisplay = selectedEquipment
+    ? new Date(getNextOccurrence(selectedEquipment.next_pm_date, selectedEquipment.interval_days) || Date.now())
+        .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null
+
+  const resetFromTodayDisplay = selectedEquipment?.interval_days
+    ? new Date(Date.now() + selectedEquipment.interval_days * 86400000)
+        .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null
+
+  const canSave = form.equipmentId && form.whatHappened && form.whatWasDone &&
+    form.deviceStatus && form.pmScheduleAction &&
+    (!form.needsReminder || (getReminderDate() && (form.reminderNote || form.reminderNoteCustom)))
 
   const handleSave = async () => {
     if (!canSave) return
@@ -41,46 +124,67 @@ export default function AddLog({ facility }) {
     setError('')
 
     const { data: { user } } = await supabase.auth.getUser()
-
     const { data: profile } = await supabase
       .from('profiles')
       .select('full_name')
       .eq('id', user.id)
       .single()
 
-    const { error } = await supabase.from('repair_logs').insert({
-      equipment_id: form.equipmentId,
-      facility_id: facility.id,
-      log_type: form.logType,
-      what_happened: form.whatHappened,
-      root_cause: form.rootCause,
-      what_was_done: form.whatWasDone,
-      parts_used: form.partsUsed,
-      labour_hours: form.labourHours ? parseFloat(form.labourHours) : null,
-      device_status: form.deviceStatus,
-      outcome: form.logType,
-      follow_up_note: form.followUpNote,
-      technician_id: user.id,
-      technician_name: profile?.full_name || user.email,
-    })
+    const nextPMDate = getNextPMDate()
+    const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
 
-    if (form.deviceStatus === 'out-of-service') {
-      await supabase
-        .from('equipment')
-        .update({ status: 'out-of-service' })
-        .eq('id', form.equipmentId)
-    }
+    const { data: log, error: logError } = await supabase
+      .from('repair_logs')
+      .insert({
+        equipment_id: form.equipmentId,
+        facility_id: facility.id,
+        log_type: form.logType,
+        what_happened: form.whatHappened,
+        root_cause: form.rootCause,
+        what_was_done: form.whatWasDone,
+        parts_used: form.partsUsed,
+        labour_hours: form.labourHours ? parseFloat(form.labourHours) : null,
+        device_status: form.deviceStatus,
+        outcome: form.logType,
+        follow_up_note: form.followUpNote,
+        follow_up_date: getReminderDate(),
+        follow_up_reminder_note: reminderNote || null,
+        pm_schedule_action: form.pmScheduleAction,
+        reminder_status: form.needsReminder ? 'pending' : 'none',
+        technician_id: user.id,
+        technician_name: profile?.full_name || user.email,
+      })
+      .select()
+      .single()
 
-    if (error) {
-      setError('Error saving: ' + error.message)
+    if (logError) {
+      setError('Error saving: ' + logError.message)
       setSaving(false)
       return
     }
 
+    await supabase
+      .from('equipment')
+      .update({
+        operational_status: form.deviceStatus,
+        next_pm_date: nextPMDate,
+      })
+      .eq('id', form.equipmentId)
+
+    if (form.needsReminder && getReminderDate()) {
+      await supabase.from('follow_up_reminders').insert({
+        equipment_id: form.equipmentId,
+        facility_id: facility.id,
+        repair_log_id: log.id,
+        technician_id: user.id,
+        reminder_date: getReminderDate(),
+        reminder_note: reminderNote,
+        status: 'pending',
+      })
+    }
+
     navigate('/logs')
   }
-
-  const selectedDevice = equipment.find(e => e.id === form.equipmentId)
 
   return (
     <div>
@@ -94,7 +198,7 @@ export default function AddLog({ facility }) {
         <div style={{ fontSize: '15px', fontWeight: '500' }}>Log a repair</div>
       </div>
 
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ padding: '16px', paddingBottom: '140px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
@@ -102,7 +206,7 @@ export default function AddLog({ facility }) {
           </div>
           <select
             value={form.equipmentId}
-            onChange={e => set('equipmentId', e.target.value)}
+            onChange={e => handleEquipmentSelect(e.target.value)}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none' }}>
             <option value="">Select device...</option>
             {equipment.map(e => (
@@ -151,7 +255,7 @@ export default function AddLog({ facility }) {
           <textarea
             value={form.rootCause}
             onChange={e => set('rootCause', e.target.value)}
-            placeholder="What caused the fault? (condensate buildup, worn part, user error...)"
+            placeholder="What caused the fault?"
             rows={2}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
           />
@@ -195,12 +299,14 @@ export default function AddLog({ facility }) {
         </div>
 
         <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>Device status after</div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
+            Device status after <span style={{ color: '#E24B4A' }}>*</span>
+          </div>
           <div style={{ display: 'flex', gap: '6px' }}>
             {[
               { key: 'working', label: 'Working', color: '#085041', bg: '#E1F5EE', border: '#5DCAA5' },
-              { key: 'needs-followup', label: 'Needs follow-up', color: '#633806', bg: '#FAEEDA', border: '#EF9F27' },
               { key: 'out-of-service', label: 'Out of service', color: '#791F1F', bg: '#FCEBEB', border: '#F09595' },
+              { key: 'decommissioned', label: 'Decommissioned', color: '#444', bg: '#f5f5f5', border: '#ddd' },
             ].map(s => (
               <button key={s.key}
                 onClick={() => set('deviceStatus', s.key)}
@@ -216,9 +322,151 @@ export default function AddLog({ facility }) {
           </div>
         </div>
 
+        {form.deviceStatus && form.deviceStatus !== 'decommissioned' && (
+          <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '12px', fontWeight: '500' }}>Set a follow-up reminder?</div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {[{ label: 'Yes', val: true }, { label: 'No', val: false }].map(o => (
+                  <button key={String(o.val)}
+                    onClick={() => set('needsReminder', o.val)}
+                    style={{
+                      padding: '4px 12px', borderRadius: '99px', border: '1px solid',
+                      borderColor: form.needsReminder === o.val ? '#85B7EB' : '#ddd',
+                      background: form.needsReminder === o.val ? '#E6F1FB' : '#fff',
+                      color: form.needsReminder === o.val ? '#0C447C' : '#888',
+                      fontSize: '11px', fontWeight: form.needsReminder === o.val ? '500' : '400',
+                      cursor: 'pointer'
+                    }}>{o.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {form.needsReminder && (
+              <>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#666', fontWeight: '500', marginBottom: '6px' }}>What is the reminder about?</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    {reminderNoteOptions.map(opt => (
+                      <button key={opt}
+                        onClick={() => set('reminderNote', opt)}
+                        style={{
+                          padding: '8px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
+                          borderColor: form.reminderNote === opt ? '#85B7EB' : '#eee',
+                          background: form.reminderNote === opt ? '#E6F1FB' : '#fff',
+                          color: form.reminderNote === opt ? '#0C447C' : '#666',
+                          fontSize: '12px', fontWeight: form.reminderNote === opt ? '500' : '400',
+                          cursor: 'pointer'
+                        }}>{opt}</button>
+                    ))}
+                    {form.reminderNote === 'Other' && (
+                      <input
+                        value={form.reminderNoteCustom}
+                        onChange={e => set('reminderNoteCustom', e.target.value)}
+                        placeholder="Describe the follow-up..."
+                        style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '11px', color: '#666', fontWeight: '500', marginBottom: '6px' }}>When should we remind you?</div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    {quickReminderOptions.map(opt => (
+                      <button key={opt.days}
+                        onClick={() => { set('reminderDays', opt.days); set('reminderCustomDate', '') }}
+                        style={{
+                          padding: '5px 12px', borderRadius: '99px', border: '1px solid',
+                          borderColor: form.reminderDays === opt.days ? '#85B7EB' : '#eee',
+                          background: form.reminderDays === opt.days ? '#E6F1FB' : '#fff',
+                          color: form.reminderDays === opt.days ? '#0C447C' : '#888',
+                          fontSize: '11px', cursor: 'pointer'
+                        }}>{opt.label}</button>
+                    ))}
+                  </div>
+                  <input
+                    type="date"
+                    value={form.reminderCustomDate}
+                    onChange={e => { set('reminderCustomDate', e.target.value); set('reminderDays', null) }}
+                    style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+                  />
+                  {getReminderDate() && (
+                    <div style={{ marginTop: '6px', background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '8px', padding: '7px 10px', fontSize: '11px', color: '#0C447C' }}>
+                      Reminder set for {new Date(getReminderDate()).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {form.deviceStatus && form.deviceStatus !== 'decommissioned' && (
+          <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '500' }}>
+              PM schedule <span style={{ color: '#E24B4A' }}>*</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+
+              <div onClick={() => set('pmScheduleAction', 'keep')}
+                style={{ background: form.pmScheduleAction === 'keep' ? '#E1F5EE' : '#fff', border: `1px solid ${form.pmScheduleAction === 'keep' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
+                <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'keep' ? '#085041' : '#333' }}>Continue on original schedule</div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                  {nextOccurrenceDisplay
+                    ? `Next PM: ${nextOccurrenceDisplay}`
+                    : 'Next future date in the original cycle'}
+                </div>
+              </div>
+
+              <div onClick={() => set('pmScheduleAction', 'recalculate')}
+                style={{ background: form.pmScheduleAction === 'recalculate' ? '#E6F1FB' : '#fff', border: `1px solid ${form.pmScheduleAction === 'recalculate' ? '#85B7EB' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
+                <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'recalculate' ? '#0C447C' : '#333' }}>Reset from today</div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                  {resetFromTodayDisplay
+                    ? `Sets next PM to ${resetFromTodayDisplay} (${selectedEquipment.interval_days} days from today)`
+                    : 'Recalculate based on interval'}
+                </div>
+              </div>
+
+              <div onClick={() => set('pmScheduleAction', 'custom')}
+                style={{ background: form.pmScheduleAction === 'custom' ? '#FAEEDA' : '#fff', border: `1px solid ${form.pmScheduleAction === 'custom' ? '#EF9F27' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
+                <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'custom' ? '#633806' : '#333' }}>Set a custom date</div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>Choose how many days from today</div>
+                {form.pmScheduleAction === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={form.customPMDays}
+                      onChange={e => set('customPMDays', e.target.value)}
+                      placeholder="e.g. 45"
+                      onClick={e => e.stopPropagation()}
+                      style={{ width: '70px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+                    />
+                    <span style={{ fontSize: '12px', color: '#888' }}>days from today</span>
+                    {form.customPMDays && (
+                      <span style={{ fontSize: '11px', color: '#633806', fontWeight: '500' }}>
+                        = {new Date(Date.now() + parseInt(form.customPMDays) * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {form.deviceStatus === 'decommissioned' && (
+          <div style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '12px', padding: '12px 14px', fontSize: '12px', color: '#666', lineHeight: '1.6' }}>
+            This device will be marked as decommissioned. No further PM notifications or follow-up reminders will be sent. The service history will be preserved.
+          </div>
+        )}
+
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
-            Follow-up note <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
+            Notes <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
           </div>
           <textarea
             value={form.followUpNote}

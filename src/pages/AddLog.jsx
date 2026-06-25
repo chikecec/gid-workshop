@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 const quickReminderOptions = [
@@ -35,15 +35,16 @@ function getNextOccurrence(nextPMDate, intervalDays) {
 
 export default function AddLog({ facility }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [equipment, setEquipment] = useState([])
   const [selectedEquipment, setSelectedEquipment] = useState(null)
+  const [parts, setParts] = useState([{ name: '', quantity: '1', description: '' }])
   const [form, setForm] = useState({
     equipmentId: '',
-    logType: 'repair',
+    logType: 'pm',
     whatHappened: '',
     rootCause: '',
     whatWasDone: '',
-    partsUsed: '',
     labourHours: '',
     deviceStatus: '',
     followUpNote: '',
@@ -66,7 +67,17 @@ export default function AddLog({ facility }) {
       .eq('facility_id', facility.id)
       .order('name')
       .then(({ data }) => {
-        if (data) setEquipment(data)
+        if (data) {
+          setEquipment(data)
+          const preselected = searchParams.get('equipment')
+          if (preselected) {
+            const eq = data.find(e => e.id === preselected)
+            if (eq) {
+              setSelectedEquipment(eq)
+              setForm(f => ({ ...f, equipmentId: preselected }))
+            }
+          }
+        }
       })
   }, [facility])
 
@@ -79,6 +90,18 @@ export default function AddLog({ facility }) {
     set('pmScheduleAction', '')
   }
 
+  const addPart = () => {
+    setParts(prev => [...prev, { name: '', quantity: '1', description: '' }])
+  }
+
+  const removePart = (index) => {
+    setParts(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const updatePart = (index, field, value) => {
+    setParts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
+  }
+
   const getReminderDate = () => {
     if (form.reminderDays) return addDaysISO(form.reminderDays)
     if (form.reminderCustomDate) return form.reminderCustomDate
@@ -87,20 +110,16 @@ export default function AddLog({ facility }) {
 
   const getNextPMDate = () => {
     if (!selectedEquipment) return null
-
     if (form.pmScheduleAction === 'keep') {
       return getNextOccurrence(selectedEquipment.next_pm_date, selectedEquipment.interval_days)
     }
-
     if (form.pmScheduleAction === 'recalculate') {
       if (selectedEquipment.interval_days) return addDaysISO(selectedEquipment.interval_days)
       return null
     }
-
     if (form.pmScheduleAction === 'custom' && form.customPMDays) {
       return addDaysISO(parseInt(form.customPMDays))
     }
-
     return selectedEquipment.next_pm_date
   }
 
@@ -113,6 +132,8 @@ export default function AddLog({ facility }) {
     ? new Date(Date.now() + selectedEquipment.interval_days * 86400000)
         .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     : null
+
+  const validParts = parts.filter(p => p.name.trim())
 
   const canSave = form.equipmentId && form.whatHappened && form.whatWasDone &&
     form.deviceStatus && form.pmScheduleAction &&
@@ -132,6 +153,7 @@ export default function AddLog({ facility }) {
 
     const nextPMDate = getNextPMDate()
     const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
+    const partsUsedText = validParts.map(p => `${p.quantity}x ${p.name}${p.description ? ` (${p.description})` : ''}`).join(', ')
 
     const { data: log, error: logError } = await supabase
       .from('repair_logs')
@@ -142,7 +164,8 @@ export default function AddLog({ facility }) {
         what_happened: form.whatHappened,
         root_cause: form.rootCause,
         what_was_done: form.whatWasDone,
-        parts_used: form.partsUsed,
+        parts_used: partsUsedText || null,
+        parts_list: validParts.length > 0 ? validParts : null,
         labour_hours: form.labourHours ? parseFloat(form.labourHours) : null,
         device_status: form.deviceStatus,
         outcome: form.logType,
@@ -168,6 +191,7 @@ export default function AddLog({ facility }) {
       .update({
         operational_status: form.deviceStatus,
         next_pm_date: nextPMDate,
+        last_pm_date: form.logType === 'pm' ? new Date().toISOString().split('T')[0] : undefined,
       })
       .eq('id', form.equipmentId)
 
@@ -183,7 +207,7 @@ export default function AddLog({ facility }) {
       })
     }
 
-    navigate('/logs')
+    navigate(-1)
   }
 
   return (
@@ -195,7 +219,7 @@ export default function AddLog({ facility }) {
           </svg>
           Back
         </button>
-        <div style={{ fontSize: '15px', fontWeight: '500' }}>Log a repair</div>
+        <div style={{ fontSize: '15px', fontWeight: '500' }}>Log service</div>
       </div>
 
       <div style={{ padding: '16px', paddingBottom: '140px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -216,17 +240,20 @@ export default function AddLog({ facility }) {
         </div>
 
         <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>Event type</div>
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
+            Service type <span style={{ color: '#E24B4A' }}>*</span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {[
+              { key: 'pm', label: 'Preventive PM' },
               { key: 'repair', label: 'Breakdown repair' },
-              { key: 'issue', label: 'Issue found' },
               { key: 'inspection', label: 'Inspection' },
+              { key: 'issue', label: 'Issue found' },
             ].map(t => (
               <button key={t.key}
                 onClick={() => set('logType', t.key)}
                 style={{
-                  flex: 1, padding: '7px 4px', borderRadius: '8px', border: '1px solid',
+                  padding: '7px 12px', borderRadius: '8px', border: '1px solid',
                   borderColor: form.logType === t.key ? '#85B7EB' : '#eee',
                   background: form.logType === t.key ? '#E6F1FB' : '#fff',
                   color: form.logType === t.key ? '#0C447C' : '#888',
@@ -244,7 +271,7 @@ export default function AddLog({ facility }) {
           <textarea
             value={form.whatHappened}
             onChange={e => set('whatHappened', e.target.value)}
-            placeholder="Describe the fault or symptom..."
+            placeholder={form.logType === 'pm' ? 'Describe what was checked and found during PM...' : 'Describe the fault or symptom...'}
             rows={3}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
           />
@@ -268,34 +295,84 @@ export default function AddLog({ facility }) {
           <textarea
             value={form.whatWasDone}
             onChange={e => set('whatWasDone', e.target.value)}
-            placeholder="Describe the repair or action taken..."
+            placeholder={form.logType === 'pm' ? 'Describe the PM steps completed...' : 'Describe the repair or action taken...'}
             rows={3}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Parts used</div>
-            <input
-              value={form.partsUsed}
-              onChange={e => set('partsUsed', e.target.value)}
-              placeholder="e.g. Filter, O-ring"
-              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
-            />
+        {/* Parts used */}
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>
+            Parts used <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
           </div>
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Labour (hrs)</div>
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              value={form.labourHours}
-              onChange={e => set('labourHours', e.target.value)}
-              placeholder="e.g. 1.5"
-              style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {parts.map((part, index) => (
+              <div key={index} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Part name</div>
+                    <input
+                      value={part.name}
+                      onChange={e => updatePart(index, 'name', e.target.value)}
+                      placeholder="e.g. Air inlet filter"
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff' }}
+                    />
+                  </div>
+                  <div style={{ width: '70px' }}>
+                    <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Qty</div>
+                    <input
+                      type="number"
+                      min="1"
+                      value={part.quantity}
+                      onChange={e => updatePart(index, 'quantity', e.target.value)}
+                      style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center' }}
+                    />
+                  </div>
+                  {parts.length > 1 && (
+                    <button
+                      onClick={() => removePart(index)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F09595', padding: '4px', marginTop: '14px', flexShrink: 0 }}>
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Description <span style={{ color: '#bbb' }}>(optional)</span></div>
+                  <input
+                    value={part.description}
+                    onChange={e => updatePart(index, 'description', e.target.value)}
+                    placeholder="e.g. OEM replacement, local brand..."
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff' }}
+                  />
+                </div>
+              </div>
+            ))}
+
+            <button
+              onClick={addPart}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', border: '1px dashed #ddd', background: 'transparent', fontSize: '12px', color: '#185FA5', cursor: 'pointer' }}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              Add another part
+            </button>
           </div>
+        </div>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Labour (hrs)</div>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={form.labourHours}
+            onChange={e => set('labourHours', e.target.value)}
+            placeholder="e.g. 1.5"
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+          />
         </div>
 
         <div>
@@ -413,9 +490,7 @@ export default function AddLog({ facility }) {
                 style={{ background: form.pmScheduleAction === 'keep' ? '#E1F5EE' : '#fff', border: `1px solid ${form.pmScheduleAction === 'keep' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'keep' ? '#085041' : '#333' }}>Continue on original schedule</div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
-                  {nextOccurrenceDisplay
-                    ? `Next PM: ${nextOccurrenceDisplay}`
-                    : 'Next future date in the original cycle'}
+                  {nextOccurrenceDisplay ? `Next PM: ${nextOccurrenceDisplay}` : 'Next future date in the original cycle'}
                 </div>
               </div>
 
@@ -424,7 +499,7 @@ export default function AddLog({ facility }) {
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'recalculate' ? '#0C447C' : '#333' }}>Reset from today</div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
                   {resetFromTodayDisplay
-                    ? `Sets next PM to ${resetFromTodayDisplay} (${selectedEquipment.interval_days} days from today)`
+                    ? `Sets next PM to ${resetFromTodayDisplay} (${selectedEquipment?.interval_days} days from today)`
                     : 'Recalculate based on interval'}
                 </div>
               </div>

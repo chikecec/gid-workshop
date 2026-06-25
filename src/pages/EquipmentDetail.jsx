@@ -18,12 +18,6 @@ export default function EquipmentDetail({ facility }) {
   const [item, setItem] = useState(null)
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showPMComplete, setShowPMComplete] = useState(false)
-  const [outcome, setOutcome] = useState(null)
-  const [pmNote, setPmNote] = useState('')
-  const [nextPMOption, setNextPMOption] = useState(null)
-  const [customDays, setCustomDays] = useState('')
-  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     const loadEquipment = async () => {
@@ -61,92 +55,6 @@ export default function EquipmentDetail({ facility }) {
     loadLogs()
   }, [id])
 
-  const getNextPMDate = () => {
-    if (nextPMOption === 'recalculate') {
-      if (item.interval_days) {
-        const d = new Date()
-        d.setDate(d.getDate() + item.interval_days)
-        return d.toISOString().split('T')[0]
-      }
-      if (item.specific_date) {
-        const d = new Date(item.specific_date)
-        d.setFullYear(d.getFullYear() + 1)
-        return d.toISOString().split('T')[0]
-      }
-    }
-    if (nextPMOption === 'keep') return item.next_pm_date
-    if (nextPMOption === 'custom' && customDays) {
-      const d = new Date()
-      d.setDate(d.getDate() + parseInt(customDays))
-      return d.toISOString().split('T')[0]
-    }
-    return null
-  }
-
-  const getNextPMDisplay = () => {
-    const date = getNextPMDate()
-    if (!date) return null
-    return new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-  }
-
-  const canConfirm = outcome && nextPMOption &&
-    (nextPMOption !== 'custom' || customDays) &&
-    (outcome === 'ok' || pmNote)
-
-  const handleMarkPMDone = async () => {
-    if (!canConfirm) return
-    setSaving(true)
-
-    const nextPMDate = getNextPMDate()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single()
-
-    await supabase.from('repair_logs').insert({
-      equipment_id: item.id,
-      facility_id: item.facility_id,
-      log_type: 'pm',
-      what_happened: 'Preventive maintenance completed',
-      what_was_done: pmNote || 'PM completed',
-      device_status: outcome === 'repair' ? 'out-of-service' : outcome === 'issue' ? 'needs-followup' : 'working',
-      outcome: outcome,
-      follow_up_note: pmNote,
-      technician_id: user.id,
-      technician_name: profile?.full_name || user.email,
-    })
-
-    await supabase.from('equipment').update({
-      last_pm_date: new Date().toISOString().split('T')[0],
-      next_pm_date: nextPMDate,
-      status: getStatus({ next_pm_date: nextPMDate }),
-    }).eq('id', item.id)
-
-    setItem(prev => ({
-      ...prev,
-      last_pm_date: new Date().toISOString().split('T')[0],
-      next_pm_date: nextPMDate,
-      status: getStatus({ next_pm_date: nextPMDate })
-    }))
-
-    const { data: updatedLogs } = await supabase
-      .from('repair_logs')
-      .select('*')
-      .eq('equipment_id', id)
-      .order('created_at', { ascending: false })
-    if (updatedLogs) setLogs(updatedLogs)
-
-    setShowPMComplete(false)
-    setOutcome(null)
-    setPmNote('')
-    setNextPMOption(null)
-    setCustomDays('')
-    setSaving(false)
-  }
-
   if (loading) return (
     <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>Loading...</div>
   )
@@ -162,16 +70,6 @@ export default function EquipmentDetail({ facility }) {
 
   const warrantyStatus = item.warranty_expiry_date
     ? new Date(item.warranty_expiry_date) < new Date() ? 'expired' : 'valid'
-    : null
-
-  const outcomeColors = { ok: '#1D9E75', issue: '#854F0B', repair: '#A32D2D' }
-
-  const recalcDate = item.interval_days
-    ? new Date(Date.now() + item.interval_days * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-    : null
-
-  const existingDate = item.next_pm_date
-    ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     : null
 
   return (
@@ -267,13 +165,26 @@ export default function EquipmentDetail({ facility }) {
         )}
 
         {logs.map(log => {
-          const dotColor = log.outcome === 'ok' ? '#1D9E75' : log.outcome === 'repair' ? '#E24B4A' : '#EF9F27'
+          const dotColor = log.log_type === 'pm' ? '#1D9E75' : log.device_status === 'out-of-service' ? '#E24B4A' : '#EF9F27'
+          const typeLabel = log.log_type === 'pm' ? 'PM' : log.log_type === 'repair' ? 'Repair' : log.log_type === 'inspection' ? 'Inspection' : 'Issue'
           return (
             <div key={log.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '10px 12px', display: 'flex', gap: '10px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: '4px' }}/>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '12px', fontWeight: '500' }}>{log.what_happened}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '500' }}>{log.what_happened}</div>
+                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#f5f5f5', color: '#888', border: '1px solid #eee' }}>{typeLabel}</span>
+                </div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{log.what_was_done}</div>
+                {log.parts_list && log.parts_list.length > 0 && (
+                  <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {log.parts_list.filter(p => p.name).map((p, i) => (
+                      <span key={i} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB' }}>
+                        {p.quantity}x {p.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div style={{ fontSize: '11px', color: '#aaa', marginTop: '3px' }}>{log.technician_name}</div>
               </div>
               <div style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>
@@ -284,123 +195,13 @@ export default function EquipmentDetail({ facility }) {
         })}
       </div>
 
-      {!showPMComplete && (
-        <div style={{ position: 'fixed', bottom: '70px', left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '430px', background: '#fff', borderTop: '1px solid #eee', padding: '12px 16px', display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => navigate('/logs/add')}
-            style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
-            Log repair
-          </button>
-          <button
-            onClick={() => setShowPMComplete(true)}
-            style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: '#1D9E75', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: 'pointer' }}>
-            Mark PM done
-          </button>
-        </div>
-      )}
-
-      {showPMComplete && (
-        <div style={{ margin: '0 16px 90px', border: '1px solid #eee', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ fontSize: '13px', fontWeight: '500' }}>How did it go?</div>
-
-          <div style={{ display: 'flex', gap: '6px' }}>
-            {[
-              { key: 'ok', label: 'All good', color: '#0F6E56', bg: '#E1F5EE', border: '#5DCAA5' },
-              { key: 'issue', label: 'Issue found', color: '#854F0B', bg: '#FAEEDA', border: '#EF9F27' },
-              { key: 'repair', label: 'Needs repair', color: '#A32D2D', bg: '#FCEBEB', border: '#F09595' },
-            ].map(o => (
-              <button key={o.key}
-                onClick={() => setOutcome(o.key)}
-                style={{
-                  flex: 1, padding: '8px 4px', borderRadius: '8px',
-                  border: `1px solid ${outcome === o.key ? o.border : '#eee'}`,
-                  background: outcome === o.key ? o.bg : '#fff',
-                  color: outcome === o.key ? o.color : '#888',
-                  fontSize: '11px', fontWeight: outcome === o.key ? '500' : '400', cursor: 'pointer'
-                }}>{o.label}</button>
-            ))}
-          </div>
-
-          {outcome && (
-            <>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666' }}>When is the next PM?</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div onClick={() => setNextPMOption('recalculate')}
-                  style={{ background: nextPMOption === 'recalculate' ? '#E1F5EE' : '#f9f9f9', border: `1px solid ${nextPMOption === 'recalculate' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'recalculate' ? '#085041' : '#333' }}>Recalculate from today</div>
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
-                    {recalcDate ? `Sets next PM to ${recalcDate} (${item.interval_days} days from today)` : 'Sets next PM based on interval'}
-                  </div>
-                </div>
-
-                <div onClick={() => setNextPMOption('keep')}
-                  style={{ background: nextPMOption === 'keep' ? '#E6F1FB' : '#f9f9f9', border: `1px solid ${nextPMOption === 'keep' ? '#85B7EB' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'keep' ? '#0C447C' : '#333' }}>Continue on original schedule</div>
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
-                    {existingDate ? `Next PM stays as ${existingDate}` : 'Keep current next PM date'}
-                  </div>
-                </div>
-
-                <div onClick={() => setNextPMOption('custom')}
-                  style={{ background: nextPMOption === 'custom' ? '#FAEEDA' : '#f9f9f9', border: `1px solid ${nextPMOption === 'custom' ? '#EF9F27' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: nextPMOption === 'custom' ? '#633806' : '#333' }}>Set a custom date</div>
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>Choose how many days from today</div>
-                  {nextPMOption === 'custom' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                      <input
-                        type="number"
-                        min="1"
-                        value={customDays}
-                        onChange={e => setCustomDays(e.target.value)}
-                        placeholder="e.g. 45"
-                        onClick={e => e.stopPropagation()}
-                        style={{ width: '70px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
-                      />
-                      <span style={{ fontSize: '12px', color: '#888' }}>days from today</span>
-                      {customDays && (
-                        <span style={{ fontSize: '11px', color: '#633806', fontWeight: '500' }}>
-                          = {new Date(Date.now() + parseInt(customDays) * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-
-          <div>
-            <div style={{ fontSize: '11px', color: '#666', fontWeight: '500', marginBottom: '5px' }}>
-              Notes {outcome && outcome !== 'ok' ? <span style={{ color: '#E24B4A' }}>*</span> : <span style={{ color: '#aaa' }}>(optional)</span>}
-            </div>
-            <textarea
-              value={pmNote}
-              onChange={e => setPmNote(e.target.value)}
-              placeholder="What did you find? Any observations for the next technician..."
-              rows={3}
-              style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'none', lineHeight: '1.5' }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => { setShowPMComplete(false); setOutcome(null); setPmNote(''); setNextPMOption(null); setCustomDays('') }}
-              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', color: '#666', cursor: 'pointer' }}>
-              Cancel
-            </button>
-            <button
-              onClick={handleMarkPMDone}
-              disabled={!canConfirm || saving}
-              style={{
-                flex: 2, padding: '10px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: '500', color: '#fff',
-                cursor: canConfirm && !saving ? 'pointer' : 'not-allowed',
-                background: !canConfirm || saving ? '#ccc' : outcomeColors[outcome]
-              }}>
-              {saving ? 'Saving...' : outcome === 'ok' ? 'Confirm & save' : outcome === 'issue' ? 'Save & schedule check' : 'Save & log repair'}
-            </button>
-          </div>
-        </div>
-      )}
+      <div style={{ position: 'fixed', bottom: '70px', left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '430px', background: '#fff', borderTop: '1px solid #eee', padding: '12px 16px' }}>
+        <button
+          onClick={() => navigate(`/logs/add?equipment=${id}`)}
+          style={{ width: '100%', padding: '13px', borderRadius: '8px', border: 'none', background: '#185FA5', fontSize: '14px', fontWeight: '500', color: '#fff', cursor: 'pointer' }}>
+          Log service
+        </button>
+      </div>
     </div>
   )
 }

@@ -41,7 +41,7 @@ export default function AddLog({ facility }) {
   const [parts, setParts] = useState([{ name: '', quantity: '1', description: '' }])
   const [form, setForm] = useState({
     equipmentId: '',
-    logType: 'pm',
+    logType: '',
     whatHappened: '',
     rootCause: '',
     whatWasDone: '',
@@ -135,7 +135,7 @@ export default function AddLog({ facility }) {
 
   const validParts = parts.filter(p => p.name.trim())
 
-  const canSave = form.equipmentId && form.whatHappened && form.whatWasDone &&
+  const canSave = form.equipmentId && form.logType && form.whatHappened && form.whatWasDone &&
     form.deviceStatus && form.pmScheduleAction &&
     (!form.needsReminder || (getReminderDate() && (form.reminderNote || form.reminderNoteCustom)))
 
@@ -191,7 +191,7 @@ export default function AddLog({ facility }) {
       .update({
         operational_status: form.deviceStatus,
         next_pm_date: nextPMDate,
-        last_pm_date: form.logType === 'pm' ? new Date().toISOString().split('T')[0] : undefined,
+        ...(form.logType === 'pm' ? { last_pm_date: new Date().toISOString().split('T')[0] } : {}),
       })
       .eq('id', form.equipmentId)
 
@@ -209,6 +209,14 @@ export default function AddLog({ facility }) {
 
     navigate(-1)
   }
+
+  const serviceTypes = [
+    { key: 'pm', label: 'Preventive Maintenance (PM)' },
+    { key: 'repair', label: 'Breakdown Repair' },
+    { key: 'assessment', label: 'Assessment' },
+    { key: 'installation', label: 'Installation' },
+    { key: 'other', label: 'Other' },
+  ]
 
   return (
     <div>
@@ -243,21 +251,16 @@ export default function AddLog({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
             Service type <span style={{ color: '#E24B4A' }}>*</span>
           </div>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {[
-              { key: 'pm', label: 'Preventive PM' },
-              { key: 'repair', label: 'Breakdown repair' },
-              { key: 'inspection', label: 'Inspection' },
-              { key: 'issue', label: 'Issue found' },
-            ].map(t => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {serviceTypes.map(t => (
               <button key={t.key}
                 onClick={() => set('logType', t.key)}
                 style={{
-                  padding: '7px 12px', borderRadius: '8px', border: '1px solid',
+                  padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.logType === t.key ? '#85B7EB' : '#eee',
                   background: form.logType === t.key ? '#E6F1FB' : '#fff',
-                  color: form.logType === t.key ? '#0C447C' : '#888',
-                  fontSize: '11px', fontWeight: form.logType === t.key ? '500' : '400',
+                  color: form.logType === t.key ? '#0C447C' : '#666',
+                  fontSize: '12px', fontWeight: form.logType === t.key ? '500' : '400',
                   cursor: 'pointer'
                 }}>{t.label}</button>
             ))}
@@ -271,7 +274,7 @@ export default function AddLog({ facility }) {
           <textarea
             value={form.whatHappened}
             onChange={e => set('whatHappened', e.target.value)}
-            placeholder={form.logType === 'pm' ? 'Describe what was checked and found during PM...' : 'Describe the fault or symptom...'}
+            placeholder={form.logType === 'pm' ? 'Describe what was checked and found during PM...' : form.logType === 'assessment' ? 'Describe the assessment findings...' : form.logType === 'installation' ? 'Describe the installation...' : 'Describe the fault or symptom...'}
             rows={3}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
           />
@@ -282,7 +285,7 @@ export default function AddLog({ facility }) {
           <textarea
             value={form.rootCause}
             onChange={e => set('rootCause', e.target.value)}
-            placeholder="What caused the fault?"
+            placeholder="What caused the fault? (if applicable)"
             rows={2}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
           />
@@ -295,13 +298,12 @@ export default function AddLog({ facility }) {
           <textarea
             value={form.whatWasDone}
             onChange={e => set('whatWasDone', e.target.value)}
-            placeholder={form.logType === 'pm' ? 'Describe the PM steps completed...' : 'Describe the repair or action taken...'}
+            placeholder={form.logType === 'pm' ? 'Describe the PM steps completed...' : form.logType === 'assessment' ? 'Describe the assessment steps and recommendations...' : form.logType === 'installation' ? 'Describe what was installed and configured...' : 'Describe the repair or action taken...'}
             rows={3}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
           />
         </div>
 
-        {/* Parts used */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>
             Parts used <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>

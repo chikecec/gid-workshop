@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 const typeConfig = {
-  repair: { label: 'Repair', bg: '#FCEBEB', color: '#791F1F', border: '#F09595', dot: '#E24B4A' },
-  issue: { label: 'Issue', bg: '#FAEEDA', color: '#633806', border: '#EF9F27', dot: '#EF9F27' },
-  pm: { label: 'PM done', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5', dot: '#1D9E75' },
-  inspection: { label: 'Inspection', bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB', dot: '#185FA5' },
+  pm: { label: 'Preventive Maintenance (PM)', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5', dot: '#1D9E75' },
+  repair: { label: 'Breakdown Repair', bg: '#FCEBEB', color: '#791F1F', border: '#F09595', dot: '#E24B4A' },
+  assessment: { label: 'Assessment', bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB', dot: '#185FA5' },
+  installation: { label: 'Installation', bg: '#EEEDFE', color: '#3C3489', border: '#A9A4F5', dot: '#6C63FF' },
+  other: { label: 'Other', bg: '#f5f5f5', color: '#444', border: '#ddd', dot: '#aaa' },
 }
 
 export default function Logs({ facility }) {
@@ -29,13 +30,15 @@ export default function Logs({ facility }) {
       })
   }, [facility])
 
-  const filters = ['All', 'Repairs', 'PM done', 'Issues']
+  const filters = ['All', 'PM', 'Repairs', 'Assessments', 'Installations', 'Other']
 
   const filtered = logs.filter(l => {
     if (filter === 'All') return true
+    if (filter === 'PM') return l.log_type === 'pm'
     if (filter === 'Repairs') return l.log_type === 'repair'
-    if (filter === 'PM done') return l.log_type === 'pm'
-    if (filter === 'Issues') return l.log_type === 'issue'
+    if (filter === 'Assessments') return l.log_type === 'assessment'
+    if (filter === 'Installations') return l.log_type === 'installation'
+    if (filter === 'Other') return l.log_type === 'other'
     return true
   })
 
@@ -54,7 +57,7 @@ export default function Logs({ facility }) {
   if (selected) {
     const log = logs.find(l => l.id === selected)
     if (!log) return null
-    const tc = typeConfig[log.log_type] || typeConfig.repair
+    const tc = typeConfig[log.log_type] || typeConfig.other
 
     return (
       <div>
@@ -89,7 +92,6 @@ export default function Logs({ facility }) {
             {[
               { label: 'Technician', value: log.technician_name },
               { label: 'Labour time', value: log.labour_hours ? `${log.labour_hours} hrs` : '—' },
-              { label: 'Parts used', value: log.parts_used || '—' },
               { label: 'Device status', value: log.device_status },
             ].map(row => (
               <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
@@ -99,11 +101,30 @@ export default function Logs({ facility }) {
             ))}
           </div>
 
+          {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Parts used</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {log.parts_list.filter(p => p.name).map((part, i) => (
+                  <div key={i} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '500' }}>{part.name}</div>
+                      {part.description && <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{part.description}</div>}
+                    </div>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB', flexShrink: 0 }}>
+                      qty: {part.quantity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {[
             { label: 'What was found', value: log.what_happened },
             { label: 'Root cause', value: log.root_cause },
             { label: 'What was done', value: log.what_was_done },
-            log.follow_up_note && { label: 'Follow-up note', value: log.follow_up_note },
+            log.follow_up_note && { label: 'Notes', value: log.follow_up_note },
           ].filter(Boolean).filter(s => s.value).map(section => (
             <div key={section.label}>
               <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{section.label}</div>
@@ -150,7 +171,7 @@ export default function Logs({ facility }) {
         {!loading && logs.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px', color: '#aaa' }}>
             <div style={{ fontSize: '14px', marginBottom: '8px' }}>No logs yet</div>
-            <div style={{ fontSize: '12px' }}>Tap "Log a repair" to record your first entry</div>
+            <div style={{ fontSize: '12px' }}>Tap a device and tap "Log service" to record your first entry</div>
           </div>
         )}
 
@@ -158,7 +179,7 @@ export default function Logs({ facility }) {
           <div key={month}>
             <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{month}</div>
             {monthLogs.map(log => {
-              const tc = typeConfig[log.log_type] || typeConfig.repair
+              const tc = typeConfig[log.log_type] || typeConfig.other
               return (
                 <div key={log.id} onClick={() => setSelected(log.id)}
                   style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '8px' }}>
@@ -180,15 +201,6 @@ export default function Logs({ facility }) {
             })}
           </div>
         ))}
-
-        <button
-          onClick={() => navigate('/logs/add')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-end', background: '#185FA5', border: 'none', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer' }}>
-          <svg width="16" height="16" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          <span style={{ fontSize: '12px', fontWeight: '500', color: '#fff' }}>Log a repair</span>
-        </button>
       </div>
     </div>
   )

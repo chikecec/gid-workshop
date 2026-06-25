@@ -92,12 +92,12 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
         {/* Summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
           {[
-            { label: 'Total', value: equipment.length, color: '#185FA5', bg: '#E6F1FB' },
-            { label: 'Overdue', value: overdue.length, color: '#A32D2D', bg: '#FCEBEB' },
-            { label: 'Due soon', value: dueSoon.length, color: '#854F0B', bg: '#FAEEDA' },
-            { label: 'OK', value: upToDate, color: '#085041', bg: '#E1F5EE' },
+            { label: 'Total', value: equipment.length, color: '#444', bg: '#f5f5f5', border: '#ddd' },
+            { label: 'Overdue', value: overdue.length, color: '#A32D2D', bg: '#FCEBEB', border: '#F09595' },
+            { label: 'Due soon', value: dueSoon.length, color: '#7A5C00', bg: '#FEF9EC', border: '#F5C842' },
+            { label: 'OK', value: upToDate, color: '#085041', bg: '#E1F5EE', border: '#5DCAA5' },
           ].map(stat => (
-            <div key={stat.label} style={{ background: stat.bg, borderRadius: '8px', padding: '10px 8px', textAlign: 'center' }}>
+            <div key={stat.label} style={{ background: stat.bg, borderRadius: '8px', padding: '10px 8px', textAlign: 'center', border: `1px solid ${stat.border}` }}>
               <div style={{ fontSize: '20px', fontWeight: '600', color: stat.color }}>{stat.value}</div>
               <div style={{ fontSize: '10px', color: stat.color, marginTop: '2px', opacity: 0.8 }}>{stat.label}</div>
             </div>
@@ -109,14 +109,14 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
         )}
 
         {!loading && !hasAnything && (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#aaa' }}>
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
             <div style={{ fontSize: '32px', marginBottom: '12px' }}>✓</div>
             <div style={{ fontSize: '14px', fontWeight: '500', color: '#1D9E75', marginBottom: '6px' }}>All clear</div>
-            <div style={{ fontSize: '12px' }}>No overdue PMs, no pending follow-ups. Everything is on schedule.</div>
+            <div style={{ fontSize: '12px', color: '#aaa' }}>No overdue PMs, no pending follow-ups. Everything is on schedule.</div>
           </div>
         )}
 
-        {/* Overdue PMs */}
+        {/* Overdue PMs — Red */}
         {!loading && overdue.length > 0 && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -136,13 +136,13 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                   </span>
                 </div>
                 <div style={{ fontSize: '11px', color: '#A32D2D' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
-                <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>View & mark done →</div>
+                <div style={{ fontSize: '11px', fontWeight: '500', color: '#A32D2D', marginTop: '6px' }}>View & mark done →</div>
               </div>
             ))}
           </>
         )}
 
-        {/* Pending follow-ups */}
+        {/* Pending follow-ups — Deep amber/orange */}
         {!loading && reminders.length > 0 && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -167,34 +167,34 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                   <div style={{ fontSize: '11px', color: '#888' }}>
                     {reminder.equipment?.location} · {new Date(reminder.reminder_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </div>
-                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>Resolve →</div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#854F0B', marginTop: '6px' }}>Resolve →</div>
                 </div>
               )
             })}
           </>
         )}
 
-        {/* Due soon PMs */}
+        {/* Due soon PMs — Light yellow */}
         {!loading && dueSoon.length > 0 && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#185FA5', flexShrink: 0 }} />
-              <div style={{ fontSize: '11px', fontWeight: '600', color: '#185FA5', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#F5C842', flexShrink: 0 }} />
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#7A5C00', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Due soon — {dueSoon.length} device{dueSoon.length > 1 ? 's' : ''}
               </div>
             </div>
             {dueSoon.map(item => (
               <div key={item.id}
                 onClick={() => navigate(`/equipment/${item.id}`)}
-                style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                style={{ background: '#FEF9EC', border: '1px solid #F5C842', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#0C447C' }}>{item.name}</div>
-                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#185FA5', border: '1px solid #85B7EB' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#7A5C00' }}>{item.name}</div>
+                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#9A7300', border: '1px solid #F5C842' }}>
                     {Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24))}d away
                   </span>
                 </div>
-                <div style={{ fontSize: '11px', color: '#185FA5' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
-                <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>View instructions →</div>
+                <div style={{ fontSize: '11px', color: '#9A7300' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
+                <div style={{ fontSize: '11px', fontWeight: '500', color: '#9A7300', marginTop: '6px' }}>View instructions →</div>
               </div>
             ))}
           </>

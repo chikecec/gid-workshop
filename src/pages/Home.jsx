@@ -2,12 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
-const statusBadge = (item) => {
-  if (item.status === 'overdue') return { label: 'Overdue', bg: '#FCEBEB', color: '#A32D2D', border: '#F09595' }
-  if (item.status === 'due-soon') return { label: 'Due soon', bg: '#FAEEDA', color: '#854F0B', border: '#EF9F27' }
-  return { label: 'Up to date', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5' }
-}
-
 function getStatus(item) {
   if (!item.next_pm_date) return 'ok'
   const today = new Date()
@@ -21,24 +15,44 @@ function getStatus(item) {
 export default function Home({ facility, onSwitchFacility, onSignOut }) {
   const navigate = useNavigate()
   const [equipment, setEquipment] = useState([])
+  const [reminders, setReminders] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!facility) return
-    supabase
-      .from('equipment')
-      .select('*')
-      .eq('facility_id', facility.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setEquipment(data.map(e => ({ ...e, status: getStatus(e) })))
-        setLoading(false)
-      })
+
+    const loadData = async () => {
+      const { data: equipmentData } = await supabase
+        .from('equipment')
+        .select('*')
+        .eq('facility_id', facility.id)
+        .order('next_pm_date', { ascending: true })
+
+      if (equipmentData) {
+        setEquipment(equipmentData.map(e => ({ ...e, status: getStatus(e) })))
+      }
+
+      const today = new Date().toISOString().split('T')[0]
+      const { data: reminderData } = await supabase
+        .from('follow_up_reminders')
+        .select('*, equipment(name, location)')
+        .eq('facility_id', facility.id)
+        .eq('status', 'pending')
+        .lte('reminder_date', today)
+        .order('reminder_date', { ascending: true })
+
+      if (reminderData) setReminders(reminderData)
+
+      setLoading(false)
+    }
+
+    loadData()
   }, [facility])
 
-  const overdue = equipment.filter(e => e.status === 'overdue').length
-  const dueSoon = equipment.filter(e => e.status === 'due-soon').length
+  const overdue = equipment.filter(e => e.status === 'overdue')
+  const dueSoon = equipment.filter(e => e.status === 'due-soon')
   const upToDate = equipment.filter(e => e.status === 'ok').length
+  const hasAnything = overdue.length > 0 || dueSoon.length > 0 || reminders.length > 0
 
   return (
     <div>
@@ -74,81 +88,118 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
       </div>
 
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+
+        {/* Summary cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
           {[
-            { label: 'Total equipment', value: equipment.length, color: '#0F6E56' },
-            { label: 'Overdue PM', value: overdue, color: '#A32D2D' },
-            { label: 'Due this month', value: dueSoon, color: '#854F0B' },
-            { label: 'Up to date', value: upToDate, color: '#0F6E56' },
+            { label: 'Total', value: equipment.length, color: '#185FA5', bg: '#E6F1FB' },
+            { label: 'Overdue', value: overdue.length, color: '#A32D2D', bg: '#FCEBEB' },
+            { label: 'Due soon', value: dueSoon.length, color: '#854F0B', bg: '#FAEEDA' },
+            { label: 'OK', value: upToDate, color: '#085041', bg: '#E1F5EE' },
           ].map(stat => (
-            <div key={stat.label} style={{ background: '#f9f9f9', borderRadius: '8px', padding: '12px', border: '1px solid #eee' }}>
-              <div style={{ fontSize: '22px', fontWeight: '500', color: stat.color }}>{stat.value}</div>
-              <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>{stat.label}</div>
+            <div key={stat.label} style={{ background: stat.bg, borderRadius: '8px', padding: '10px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: '600', color: stat.color }}>{stat.value}</div>
+              <div style={{ fontSize: '10px', color: stat.color, marginTop: '2px', opacity: 0.8 }}>{stat.label}</div>
             </div>
           ))}
         </div>
 
         {loading && (
-          <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: '13px' }}>
-            Loading...
+          <div style={{ textAlign: 'center', padding: '30px', color: '#aaa', fontSize: '13px' }}>Loading...</div>
+        )}
+
+        {!loading && !hasAnything && (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#aaa' }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>✓</div>
+            <div style={{ fontSize: '14px', fontWeight: '500', color: '#1D9E75', marginBottom: '6px' }}>All clear</div>
+            <div style={{ fontSize: '12px' }}>No overdue PMs, no pending follow-ups. Everything is on schedule.</div>
           </div>
         )}
 
-        {!loading && equipment.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '30px', color: '#aaa' }}>
-            <div style={{ fontSize: '14px', marginBottom: '8px' }}>No equipment yet</div>
-            <div style={{ fontSize: '12px' }}>Tap + to register your first device</div>
-          </div>
-        )}
-
-        {equipment.filter(e => e.status === 'overdue').map(item => (
-          <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
-            style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
-            <div style={{ fontSize: '13px', fontWeight: '500', color: '#791F1F' }}>Overdue — {item.name}</div>
-            <div style={{ fontSize: '11px', color: '#A32D2D', marginTop: '2px' }}>
-              PM was due {Math.abs(Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24)))} days ago · {item.location}
-            </div>
-            <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>View & schedule →</div>
-          </div>
-        ))}
-
-        {equipment.filter(e => e.status === 'due-soon').map(item => (
-          <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
-            style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
-            <div style={{ fontSize: '13px', fontWeight: '500', color: '#633806' }}>
-              Due in {Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24))} days — {item.name}
-            </div>
-            <div style={{ fontSize: '11px', color: '#854F0B', marginTop: '2px' }}>{item.location}</div>
-            <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>View instructions →</div>
-          </div>
-        ))}
-
-        {equipment.length > 0 && (
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            All equipment
-          </div>
-        )}
-
-        {equipment.map(item => {
-          const badge = statusBadge(item)
-          return (
-            <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
-              style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="18" height="18" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
-                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                </svg>
+        {/* Overdue PMs */}
+        {!loading && overdue.length > 0 && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#E24B4A', flexShrink: 0 }} />
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#A32D2D', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Overdue PM — {overdue.length} device{overdue.length > 1 ? 's' : ''}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{item.location}</div>
-              </div>
-              <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`, flexShrink: 0 }}>
-                {badge.label}
-              </span>
             </div>
-          )
-        })}
+            {overdue.map(item => (
+              <div key={item.id}
+                onClick={() => navigate(`/equipment/${item.id}`)}
+                style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#791F1F' }}>{item.name}</div>
+                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#A32D2D', border: '1px solid #F09595' }}>
+                    {Math.abs(Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24)))} days overdue
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#A32D2D' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
+                <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>View & mark done →</div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* Pending follow-ups */}
+        {!loading && reminders.length > 0 && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#EF9F27', flexShrink: 0 }} />
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#633806', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Pending follow-up — {reminders.length} item{reminders.length > 1 ? 's' : ''}
+              </div>
+            </div>
+            {reminders.map(reminder => {
+              const isOverdueReminder = reminder.reminder_date < new Date().toISOString().split('T')[0]
+              return (
+                <div key={reminder.id}
+                  onClick={() => navigate(`/follow-up/${reminder.id}`)}
+                  style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#633806' }}>{reminder.equipment?.name}</div>
+                    <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#854F0B', border: '1px solid #EF9F27' }}>
+                      {isOverdueReminder ? 'Overdue' : 'Due today'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#854F0B', marginBottom: '4px' }}>{reminder.reminder_note}</div>
+                  <div style={{ fontSize: '11px', color: '#888' }}>
+                    {reminder.equipment?.location} · {new Date(reminder.reminder_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>Resolve →</div>
+                </div>
+              )
+            })}
+          </>
+        )}
+
+        {/* Due soon PMs */}
+        {!loading && dueSoon.length > 0 && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#185FA5', flexShrink: 0 }} />
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#185FA5', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Due soon — {dueSoon.length} device{dueSoon.length > 1 ? 's' : ''}
+              </div>
+            </div>
+            {dueSoon.map(item => (
+              <div key={item.id}
+                onClick={() => navigate(`/equipment/${item.id}`)}
+                style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#0C447C' }}>{item.name}</div>
+                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#185FA5', border: '1px solid #85B7EB' }}>
+                    {Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24))}d away
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#185FA5' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
+                <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5', marginTop: '6px' }}>View instructions →</div>
+              </div>
+            ))}
+          </>
+        )}
+
       </div>
     </div>
   )

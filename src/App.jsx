@@ -14,6 +14,7 @@ import EditEquipment from './pages/EditEquipment'
 import AddLog from './pages/AddLog'
 import Team from './pages/Team'
 import ResolveFollowUp from './pages/ResolveFollowUp'
+import Reports from './pages/Reports'
 import BottomNav from './components/BottomNav'
 import './App.css'
 
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="/logs/add" element={<AddLog facility={facility} />} />
           <Route path="/team" element={<Team facility={facility} />} />
           <Route path="/follow-up/:id" element={<ResolveFollowUp facility={facility} />} />
+          <Route path="/reports" element={<Reports facility={facility} />} />
         </Routes>
         <BottomNav />
       </div>

@@ -26,6 +26,11 @@ const navItems = [
       <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
     </svg>
   )},
+  { path: '/reports', label: 'Reports', icon: (
+    <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+      <path d="M18 20V10M12 20V4M6 20v-6"/>
+    </svg>
+  )},
 ]
 
 export default function BottomNav() {

@@ -35,7 +35,7 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
       const today = new Date().toISOString().split('T')[0]
       const { data: reminderData } = await supabase
         .from('follow_up_reminders')
-        .select('*, equipment(name, location)')
+        .select('*, equipment(name, location, model_number, serial_number)')
         .eq('facility_id', facility.id)
         .eq('status', 'pending')
         .lte('reminder_date', today)
@@ -135,14 +135,30 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                     {Math.abs(Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24)))} days overdue
                   </span>
                 </div>
-                <div style={{ fontSize: '11px', color: '#A32D2D' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
+                <div style={{ fontSize: '11px', color: '#A32D2D' }}>
+                  {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
+                </div>
+                {(item.model_number || item.serial_number) && (
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '3px' }}>
+                    {item.model_number && (
+                      <div style={{ fontSize: '11px', color: '#A32D2D', opacity: 0.8 }}>
+                        Model: <span style={{ fontWeight: '500' }}>{item.model_number}</span>
+                      </div>
+                    )}
+                    {item.serial_number && (
+                      <div style={{ fontSize: '11px', color: '#A32D2D', opacity: 0.8 }}>
+                        S/N: <span style={{ fontWeight: '500' }}>{item.serial_number}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div style={{ fontSize: '11px', fontWeight: '500', color: '#A32D2D', marginTop: '6px' }}>View & mark done →</div>
               </div>
             ))}
           </>
         )}
 
-        {/* Pending follow-ups — Deep amber/orange */}
+        {/* Pending follow-ups — Deep amber */}
         {!loading && reminders.length > 0 && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -163,9 +179,26 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                       {isOverdueReminder ? 'Overdue' : 'Due today'}
                     </span>
                   </div>
-                  <div style={{ fontSize: '11px', color: '#854F0B', marginBottom: '4px' }}>{reminder.reminder_note}</div>
+                  <div style={{ fontSize: '11px', color: '#854F0B', marginBottom: '3px' }}>{reminder.reminder_note}</div>
                   <div style={{ fontSize: '11px', color: '#888' }}>
-                    {reminder.equipment?.location} · {new Date(reminder.reminder_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {reminder.equipment?.location}
+                  </div>
+                  {(reminder.equipment?.model_number || reminder.equipment?.serial_number) && (
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '3px' }}>
+                      {reminder.equipment?.model_number && (
+                        <div style={{ fontSize: '11px', color: '#854F0B', opacity: 0.8 }}>
+                          Model: <span style={{ fontWeight: '500' }}>{reminder.equipment.model_number}</span>
+                        </div>
+                      )}
+                      {reminder.equipment?.serial_number && (
+                        <div style={{ fontSize: '11px', color: '#854F0B', opacity: 0.8 }}>
+                          S/N: <span style={{ fontWeight: '500' }}>{reminder.equipment.serial_number}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
+                    {new Date(reminder.reminder_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </div>
                   <div style={{ fontSize: '11px', fontWeight: '500', color: '#854F0B', marginTop: '6px' }}>Resolve →</div>
                 </div>
@@ -193,7 +226,23 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                     {Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24))}d away
                   </span>
                 </div>
-                <div style={{ fontSize: '11px', color: '#9A7300' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
+                <div style={{ fontSize: '11px', color: '#9A7300' }}>
+                  {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
+                </div>
+                {(item.model_number || item.serial_number) && (
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '3px' }}>
+                    {item.model_number && (
+                      <div style={{ fontSize: '11px', color: '#9A7300', opacity: 0.8 }}>
+                        Model: <span style={{ fontWeight: '500' }}>{item.model_number}</span>
+                      </div>
+                    )}
+                    {item.serial_number && (
+                      <div style={{ fontSize: '11px', color: '#9A7300', opacity: 0.8 }}>
+                        S/N: <span style={{ fontWeight: '500' }}>{item.serial_number}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div style={{ fontSize: '11px', fontWeight: '500', color: '#9A7300', marginTop: '6px' }}>View instructions →</div>
               </div>
             ))}

@@ -46,17 +46,44 @@ const billingLabels = {
   'placement-machine': 'Placement machine',
 }
 
+const equipmentTypes = [
+  'Respiratory support',
+  'Monitoring',
+  'Sterilisation',
+  'Cardiology',
+  'Diagnostic',
+  'Laboratory',
+  'Surgical',
+  'Imaging',
+  'Other',
+]
+
 export default function Reports({ facility }) {
   const [logs, setLogs] = useState([])
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
+  const [showFilterPanel, setShowFilterPanel] = useState(false)
   const [filter, setFilter] = useState({
     rangeType: 'this-week',
     startDate: getWeekRange(0).start,
     endDate: getWeekRange(0).end,
     technicianId: 'all',
+  })
+  const [reportFilters, setReportFilters] = useState({
+    deviceSearch: '',
+    serviceTypes: [],
+    statuses: [],
+    billingTypes: [],
+    equipmentTypes: [],
+  })
+  const [pendingReportFilters, setPendingReportFilters] = useState({
+    deviceSearch: '',
+    serviceTypes: [],
+    statuses: [],
+    billingTypes: [],
+    equipmentTypes: [],
   })
 
   useEffect(() => {
@@ -93,7 +120,7 @@ export default function Reports({ facility }) {
 
     let query = supabase
       .from('repair_logs')
-      .select('*, equipment(name, location, room_number, next_pm_date, model_number, serial_number)')
+      .select('*, equipment(name, location, room_number, next_pm_date, model_number, serial_number, type)')
       .eq('facility_id', facility.id)
       .gte('created_at', filter.startDate)
       .lte('created_at', filter.endDate + 'T23:59:59')
@@ -102,9 +129,37 @@ export default function Reports({ facility }) {
     if (filter.technicianId !== 'all') {
       query = query.eq('technician_id', filter.technicianId)
     }
+    if (reportFilters.serviceTypes.length) {
+      query = query.in('log_type', reportFilters.serviceTypes)
+    }
+    if (reportFilters.statuses.length) {
+      query = query.in('device_status', reportFilters.statuses)
+    }
+    if (reportFilters.billingTypes.length) {
+      query = query.in('billing_classification', reportFilters.billingTypes)
+    }
 
     const { data } = await query
-    if (data) setLogs(data)
+    if (data) {
+      let filtered = data
+
+      // Filter by equipment type
+      if (reportFilters.equipmentTypes.length) {
+        filtered = filtered.filter(log => reportFilters.equipmentTypes.includes(log.equipment?.type))
+      }
+
+      // Filter by device name, model, or serial number
+      if (reportFilters.deviceSearch.trim()) {
+        const q = reportFilters.deviceSearch.toLowerCase()
+        filtered = filtered.filter(log =>
+          log.equipment?.name?.toLowerCase().includes(q) ||
+          log.equipment?.model_number?.toLowerCase().includes(q) ||
+          log.equipment?.serial_number?.toLowerCase().includes(q)
+        )
+      }
+
+      setLogs(filtered)
+    }
     setLoading(false)
     setGenerated(true)
   }
@@ -135,6 +190,49 @@ export default function Reports({ facility }) {
 
   const dateRangeLabel = `${new Date(filter.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – ${new Date(filter.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
 
+  const activeFilterCount =
+    (reportFilters.deviceSearch ? 1 : 0) +
+    reportFilters.serviceTypes.length +
+    reportFilters.statuses.length +
+    reportFilters.billingTypes.length +
+    reportFilters.equipmentTypes.length
+
+  const togglePending = (key, value) => {
+    setPendingReportFilters(f => ({
+      ...f,
+      [key]: f[key].includes(value)
+        ? f[key].filter(v => v !== value)
+        : [...f[key], value]
+    }))
+  }
+
+  const applyReportFilters = () => {
+    setReportFilters({ ...pendingReportFilters })
+    setShowFilterPanel(false)
+    setGenerated(false)
+  }
+
+  const clearReportFilters = () => {
+    const empty = { deviceSearch: '', serviceTypes: [], statuses: [], billingTypes: [], equipmentTypes: [] }
+    setReportFilters(empty)
+    setPendingReportFilters(empty)
+    setShowFilterPanel(false)
+    setGenerated(false)
+  }
+
+  const chipStyle = (active) => ({
+    padding: '5px 12px',
+    borderRadius: '99px',
+    border: '1px solid',
+    borderColor: active ? '#85B7EB' : '#eee',
+    background: active ? '#E6F1FB' : '#fff',
+    color: active ? '#0C447C' : '#666',
+    fontSize: '12px',
+    fontWeight: active ? '500' : '400',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  })
+
   return (
     <div>
       <style>{`
@@ -146,10 +244,24 @@ export default function Reports({ facility }) {
         }
       `}</style>
 
-      {/* Controls */}
-      <div className="no-print" style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px' }}>
-        <div style={{ fontSize: '16px', fontWeight: '500' }}>Reports</div>
-        <div style={{ fontSize: '11px', color: '#999', marginTop: '1px' }}>Generate and download weekly reports</div>
+      <div className="no-print" style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: '16px', fontWeight: '500' }}>Reports</div>
+          <div style={{ fontSize: '11px', color: '#999', marginTop: '1px' }}>Generate and download weekly reports</div>
+        </div>
+        <button
+          onClick={() => { setPendingReportFilters({ ...reportFilters }); setShowFilterPanel(true) }}
+          style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #ddd', background: activeFilterCount > 0 ? '#E6F1FB' : '#fff', fontSize: '12px', color: activeFilterCount > 0 ? '#0C447C' : '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M4 6h16M7 12h10M10 18h4"/>
+          </svg>
+          Filter
+          {activeFilterCount > 0 && (
+            <span style={{ background: '#185FA5', color: '#fff', borderRadius: '99px', fontSize: '10px', padding: '1px 6px', fontWeight: '600' }}>
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
       </div>
 
       <div className="no-print" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', paddingBottom: '100px' }}>
@@ -232,6 +344,12 @@ export default function Reports({ facility }) {
           )}
         </div>
 
+        {activeFilterCount > 0 && (
+          <div style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '8px', padding: '8px 12px', fontSize: '11px', color: '#0C447C' }}>
+            {activeFilterCount} report filter{activeFilterCount > 1 ? 's' : ''} active — only matching jobs will appear in the report
+          </div>
+        )}
+
         <button onClick={generateReport} disabled={loading}
           style={{ width: '100%', padding: '12px', borderRadius: '8px', border: 'none', background: loading ? '#ccc' : '#185FA5', fontSize: '14px', fontWeight: '500', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer' }}>
           {loading ? 'Generating...' : 'Generate Report'}
@@ -239,7 +357,7 @@ export default function Reports({ facility }) {
 
         {generated && logs.length === 0 && (
           <div style={{ textAlign: 'center', padding: '30px', color: '#aaa', fontSize: '13px' }}>
-            No logs found for this period
+            No logs found for this period and filters
           </div>
         )}
 
@@ -258,7 +376,6 @@ export default function Reports({ facility }) {
       {generated && logs.length > 0 && (
         <div className="print-area" style={{ padding: '16px', paddingBottom: '100px' }}>
 
-          {/* Header */}
           <div style={{ borderBottom: '2px solid #185FA5', paddingBottom: '12px', marginBottom: '16px' }}>
             <div style={{ fontSize: '18px', fontWeight: '600', color: '#185FA5' }}>GID Workshop</div>
             <div style={{ fontSize: '15px', fontWeight: '600', color: '#333', marginTop: '2px' }}>Weekly Service Report</div>
@@ -279,7 +396,6 @@ export default function Reports({ facility }) {
             </div>
           </div>
 
-          {/* Summary cards */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
             {[
               { label: 'Total jobs', value: logs.length, color: '#185FA5', bg: '#E6F1FB' },
@@ -294,7 +410,6 @@ export default function Reports({ facility }) {
             ))}
           </div>
 
-          {/* Breakdowns */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             <div>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>By status</div>
@@ -316,7 +431,6 @@ export default function Reports({ facility }) {
             </div>
           </div>
 
-          {/* Job details */}
           <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
             Job details ({logs.length} entries)
           </div>
@@ -325,7 +439,6 @@ export default function Reports({ facility }) {
             {logs.map((log, index) => (
               <div key={log.id} style={{ border: '1px solid #ddd', borderRadius: '10px', overflow: 'hidden', pageBreakInside: 'avoid' }}>
 
-                {/* Job header */}
                 <div style={{ background: '#f5f5f5', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #ddd' }}>
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: '600' }}>
@@ -357,10 +470,7 @@ export default function Reports({ facility }) {
                   </div>
                 </div>
 
-                {/* Job fields */}
                 <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-
-                  {/* Key fields grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                     {[
                       { label: 'Service type', value: serviceLabels[log.log_type] || log.log_type || '—' },
@@ -379,7 +489,6 @@ export default function Reports({ facility }) {
                     ))}
                   </div>
 
-                  {/* What happened */}
                   {log.what_happened && (
                     <div style={{ fontSize: '11px' }}>
                       <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>What happened / Task</div>
@@ -387,7 +496,6 @@ export default function Reports({ facility }) {
                     </div>
                   )}
 
-                  {/* Root cause */}
                   {log.root_cause && (
                     <div style={{ fontSize: '11px' }}>
                       <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>Root cause</div>
@@ -395,7 +503,6 @@ export default function Reports({ facility }) {
                     </div>
                   )}
 
-                  {/* What was done */}
                   {log.what_was_done && (
                     <div style={{ fontSize: '11px' }}>
                       <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>What was done</div>
@@ -403,7 +510,6 @@ export default function Reports({ facility }) {
                     </div>
                   )}
 
-                  {/* Parts used */}
                   {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
                     <div style={{ fontSize: '11px' }}>
                       <div style={{ color: '#888', marginBottom: '4px', fontWeight: '500' }}>Parts used</div>
@@ -418,14 +524,12 @@ export default function Reports({ facility }) {
                     </div>
                   )}
 
-                  {/* Engineer comment */}
                   {log.follow_up_note && (
                     <div style={{ fontSize: '11px' }}>
                       <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>Engineer comment</div>
                       <div style={{ color: '#333', lineHeight: '1.5', padding: '6px 8px', background: '#FAEEDA', borderRadius: '6px', border: '1px solid #EF9F27' }}>{log.follow_up_note}</div>
                     </div>
                   )}
-
                 </div>
               </div>
             ))}
@@ -435,7 +539,107 @@ export default function Reports({ facility }) {
             <span>Generated by GID Workshop · gid-workshop.vercel.app</span>
             <span>{new Date().toLocaleString('en-GB')}</span>
           </div>
+        </div>
+      )}
 
+      {/* Filter panel */}
+      {showFilterPanel && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+          <div onClick={() => setShowFilterPanel(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />
+          <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '430px', background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 16px', paddingBottom: '40px', maxHeight: '85vh', overflowY: 'auto' }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '500' }}>Filter report</div>
+              <button onClick={() => setShowFilterPanel(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa' }}>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Device search */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Device</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f5f5f5', borderRadius: '8px', padding: '8px 12px' }}>
+                <svg width="14" height="14" fill="none" stroke="#aaa" strokeWidth="2" viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input
+                  value={pendingReportFilters.deviceSearch}
+                  onChange={e => setPendingReportFilters(f => ({ ...f, deviceSearch: e.target.value }))}
+                  placeholder="Search by name, model or serial number..."
+                  style={{ flex: 1, border: 'none', background: 'transparent', fontSize: '12px', outline: 'none', color: '#333' }}
+                />
+                {pendingReportFilters.deviceSearch && (
+                  <button onClick={() => setPendingReportFilters(f => ({ ...f, deviceSearch: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', padding: '0' }}>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Equipment type */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Equipment type</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {equipmentTypes.map(t => (
+                  <button key={t} onClick={() => togglePending('equipmentTypes', t)} style={chipStyle(pendingReportFilters.equipmentTypes.includes(t))}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Service type */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Service type</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {Object.entries(serviceLabels).map(([key, label]) => (
+                  <button key={key} onClick={() => togglePending('serviceTypes', key)} style={chipStyle(pendingReportFilters.serviceTypes.includes(key))}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Status */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Status</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {Object.entries(statusLabels).map(([key, label]) => (
+                  <button key={key} onClick={() => togglePending('statuses', key)} style={chipStyle(pendingReportFilters.statuses.includes(key))}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Billing classification */}
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Billing classification</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {Object.entries(billingLabels).map(([key, label]) => (
+                  <button key={key} onClick={() => togglePending('billingTypes', key)} style={chipStyle(pendingReportFilters.billingTypes.includes(key))}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={clearReportFilters}
+                style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
+                Clear all
+              </button>
+              <button onClick={applyReportFilters}
+                style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: '#185FA5', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: 'pointer' }}>
+                Apply filters
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
     </div>

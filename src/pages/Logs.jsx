@@ -31,6 +31,127 @@ const billingLabels = {
   'placement-machine': 'Placement machine',
 }
 
+function LogDetail({ log, onBack, navigate }) {
+  const tc = typeConfig[log.log_type] || typeConfig.other
+
+  return (
+    <div>
+      <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#185FA5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+          Logs
+        </button>
+      </div>
+
+      <div style={{ padding: '14px 16px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+        {/* Device header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="20" height="20" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>{log.equipment?.name || 'Unknown device'}</div>
+            <div style={{ fontSize: '12px', color: '#888', marginTop: '1px' }}>{log.equipment?.location}</div>
+            {(log.equipment?.model_number || log.equipment?.serial_number) && (
+              <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
+                {log.equipment?.model_number && (
+                  <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>
+                )}
+                {log.equipment?.serial_number && (
+                  <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Service type and date */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
+          <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+        </div>
+
+        {/* Key fields */}
+        <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
+          {[
+            { label: 'Technician', value: log.technician_name || '—' },
+            { label: 'Status', value: statusLabels[log.device_status] || log.device_status || '—' },
+            { label: 'Time spent', value: log.time_spent || (log.labour_hours ? `${log.labour_hours} hrs` : '—') },
+            { label: 'Billing', value: billingLabels[log.billing_classification] || '—' },
+            { label: 'LPO / Invoice', value: log.lpo_number || '—' },
+          ].map(row => (
+            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
+              <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
+              <span style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{row.value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Parts used */}
+        {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Parts used</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {log.parts_list.filter(p => p.name).map((part, i) => (
+                <div key={i} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{part.name}</div>
+                    {part.description && <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{part.description}</div>}
+                  </div>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB', flexShrink: 0 }}>
+                    qty: {part.quantity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Text sections */}
+        {[
+          { label: 'What was found', value: log.what_happened },
+          { label: 'Root cause', value: log.root_cause },
+          { label: 'What was done', value: log.what_was_done },
+          { label: 'Engineer comment', value: log.follow_up_note },
+        ].filter(s => s.value).map(section => (
+          <div key={section.label}>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{section.label}</div>
+            <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#333', lineHeight: '1.6' }}>{section.value}</div>
+          </div>
+        ))}
+
+        {/* Follow-up reminder */}
+        {log.follow_up_reminder_note && (
+          <div style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '8px', padding: '10px 12px' }}>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#633806', marginBottom: '3px' }}>Follow-up reminder</div>
+            <div style={{ fontSize: '12px', color: '#854F0B' }}>{log.follow_up_reminder_note}</div>
+            {log.follow_up_date && (
+              <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
+                Due: {new Date(log.follow_up_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* View device link */}
+        <div
+          onClick={() => navigate(`/equipment/${log.equipment_id}`)}
+          style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '8px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <svg width="15" height="15" fill="none" stroke="#185FA5" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+          </svg>
+          <span style={{ fontSize: '12px', color: '#0C447C' }}>View full history for {log.equipment?.name} →</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Logs({ facility }) {
   const navigate = useNavigate()
   const [logs, setLogs] = useState([])
@@ -130,128 +251,10 @@ export default function Logs({ facility }) {
     whiteSpace: 'nowrap',
   })
 
-  // Detail view
   if (selected) {
     const log = logs.find(l => l.id === selected)
     if (!log) return null
-    const tc = typeConfig[log.log_type] || typeConfig.other
-
-    return (
-      <div>
-        <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#185FA5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M19 12H5M12 5l-7 7 7 7"/>
-            </svg>
-            Logs
-          </button>
-        </div>
-
-        <div style={{ padding: '14px 16px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-          {/* Device header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="20" height="20" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-              </svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '14px', fontWeight: '500' }}>{log.equipment?.name || 'Unknown device'}</div>
-              <div style={{ fontSize: '12px', color: '#888', marginTop: '1px' }}>{log.equipment?.location}</div>
-              {(log.equipment?.model_number || log.equipment?.serial_number) && (
-                <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
-                  {log.equipment?.model_number && (
-                    <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>
-                  )}
-                  {log.equipment?.serial_number && (
-                    <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Service type and date */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
-            <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-          </div>
-
-          {/* Key fields */}
-          <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
-            {[
-              { label: 'Technician', value: log.technician_name || '—' },
-              { label: 'Status', value: statusLabels[log.device_status] || log.device_status || '—' },
-              { label: 'Time spent', value: log.time_spent || (log.labour_hours ? `${log.labour_hours} hrs` : '—') },
-              { label: 'Billing', value: billingLabels[log.billing_classification] || '—' },
-              { label: 'LPO / Invoice', value: log.lpo_number || '—' },
-            ].map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
-                <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
-                <span style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{row.value}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Parts used */}
-          {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Parts used</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                {log.parts_list.filter(p => p.name).map((part, i) => (
-                  <div key={i} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{part.name}</div>
-                      {part.description && <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{part.description}</div>}
-                    </div>
-                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB', flexShrink: 0 }}>
-                      qty: {part.quantity}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Text sections */}
-          {[
-            { label: 'What was found', value: log.what_happened },
-            { label: 'Root cause', value: log.root_cause },
-            { label: 'What was done', value: log.what_was_done },
-            { label: 'Engineer comment', value: log.follow_up_note },
-          ].filter(s => s.value).map(section => (
-            <div key={section.label}>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{section.label}</div>
-              <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#333', lineHeight: '1.6' }}>{section.value}</div>
-            </div>
-          ))}
-
-          {/* Follow-up reminder info */}
-          {log.follow_up_reminder_note && (
-            <div style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '8px', padding: '10px 12px' }}>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#633806', marginBottom: '3px' }}>Follow-up reminder</div>
-              <div style={{ fontSize: '12px', color: '#854F0B' }}>{log.follow_up_reminder_note}</div>
-              {log.follow_up_date && (
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
-                  Due: {new Date(log.follow_up_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* View device link */}
-          <div
-            onClick={() => navigate(`/equipment/${log.equipment_id}`)}
-            style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '8px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <svg width="15" height="15" fill="none" stroke="#185FA5" strokeWidth="2" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
-            </svg>
-            <span style={{ fontSize: '12px', color: '#0C447C' }}>View full history for {log.equipment?.name} →</span>
-          </div>
-        </div>
-      </div>
-    )
+    return <LogDetail log={log} onBack={() => setSelected(null)} navigate={navigate} />
   }
 
   return (
@@ -355,40 +358,19 @@ export default function Logs({ facility }) {
                   {/* What happened */}
                   <div style={{ fontSize: '11px', color: '#666', paddingLeft: '17px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.what_happened}</div>
 
-                  {/* Status and billing tags */}
+                  {/* Status and follow-up tags only */}
                   <div style={{ display: 'flex', gap: '6px', paddingLeft: '17px', flexWrap: 'wrap' }}>
                     {log.device_status && (
                       <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
                         {statusLabels[log.device_status] || log.device_status}
                       </span>
                     )}
-                    {log.billing_classification && (
-                      <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
-                        {billingLabels[log.billing_classification] || log.billing_classification}
-                      </span>
-                    )}
-                    {log.lpo_number && (
-                      <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
-                        LPO: {log.lpo_number}
-                      </span>
-                    )}
-                    {log.time_spent && (
-                      <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
-                        {log.time_spent}
+                    {log.follow_up_reminder_note && (
+                      <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
+                        Follow-up set
                       </span>
                     )}
                   </div>
-
-                  {/* Parts used tags */}
-                  {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
-                    <div style={{ display: 'flex', gap: '4px', paddingLeft: '17px', flexWrap: 'wrap' }}>
-                      {log.parts_list.filter(p => p.name).map((p, i) => (
-                        <span key={i} style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB' }}>
-                          {p.quantity}x {p.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
 
                   {/* Footer */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '17px' }}>

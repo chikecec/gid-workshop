@@ -12,12 +12,42 @@ function getStatus(item) {
   return 'ok'
 }
 
+const statusLabels = {
+  'successful': 'Successful',
+  'still-under-repair': 'Still under repair',
+  'still-ongoing': 'Still ongoing',
+  'failed': 'Failed',
+  'waiting-spare-part': 'Waiting for spare part',
+  'rescheduled': 'Rescheduled',
+  'waiting-lpo': 'Waiting for LPO',
+  'waiting-management': 'Waiting for management',
+  'decommissioned': 'Decommissioned',
+  'working': 'Working',
+  'out-of-service': 'Out of service',
+}
+
+const billingLabels = {
+  'under-warranty': 'Under warranty',
+  'out-of-warranty': 'Out of warranty',
+  'service-contract': 'Service contract',
+  'placement-machine': 'Placement machine',
+}
+
+const typeConfig = {
+  pm: { label: 'Preventive Maintenance (PM)', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5', dot: '#1D9E75' },
+  repair: { label: 'Breakdown Repair', bg: '#FCEBEB', color: '#791F1F', border: '#F09595', dot: '#E24B4A' },
+  assessment: { label: 'Assessment', bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB', dot: '#185FA5' },
+  installation: { label: 'Installation', bg: '#EEEDFE', color: '#3C3489', border: '#A9A4F5', dot: '#6C63FF' },
+  other: { label: 'Other', bg: '#f5f5f5', color: '#444', border: '#ddd', dot: '#aaa' },
+}
+
 export default function EquipmentDetail({ facility }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [item, setItem] = useState(null)
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [selectedLog, setSelectedLog] = useState(null)
 
   useEffect(() => {
     const loadEquipment = async () => {
@@ -63,6 +93,118 @@ export default function EquipmentDetail({ facility }) {
     <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>Equipment not found</div>
   )
 
+  // Log detail view
+  if (selectedLog) {
+    const log = logs.find(l => l.id === selectedLog)
+    if (!log) return null
+    const tc = typeConfig[log.log_type] || typeConfig.other
+
+    return (
+      <div>
+        <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => setSelectedLog(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#185FA5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Back
+          </button>
+          <div style={{ fontSize: '15px', fontWeight: '500' }}>Service log</div>
+        </div>
+
+        <div style={{ padding: '14px 16px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Device header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="20" height="20" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+              </svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>{item.name}</div>
+              <div style={{ fontSize: '12px', color: '#888', marginTop: '1px' }}>{item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
+              {(item.model_number || item.serial_number) && (
+                <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
+                  {item.model_number && <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{item.model_number}</span></div>}
+                  {item.serial_number && <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{item.serial_number}</span></div>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Service type and date */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
+            <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+          </div>
+
+          {/* Key fields */}
+          <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
+            {[
+              { label: 'Technician', value: log.technician_name || '—' },
+              { label: 'Status', value: statusLabels[log.device_status] || log.device_status || '—' },
+              { label: 'Time spent', value: log.time_spent || (log.labour_hours ? `${log.labour_hours} hrs` : '—') },
+              { label: 'Billing', value: billingLabels[log.billing_classification] || '—' },
+              { label: 'LPO / Invoice', value: log.lpo_number || '—' },
+            ].map(row => (
+              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
+                <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
+                <span style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{row.value}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Parts used */}
+          {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Parts used</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {log.parts_list.filter(p => p.name).map((part, i) => (
+                  <div key={i} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{part.name}</div>
+                      {part.description && <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{part.description}</div>}
+                    </div>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB', flexShrink: 0 }}>
+                      qty: {part.quantity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Text sections */}
+          {[
+            { label: 'What was found', value: log.what_happened },
+            { label: 'Root cause', value: log.root_cause },
+            { label: 'What was done', value: log.what_was_done },
+            { label: 'Engineer comment', value: log.follow_up_note },
+          ].filter(s => s.value).map(section => (
+            <div key={section.label}>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{section.label}</div>
+              <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#333', lineHeight: '1.6' }}>{section.value}</div>
+            </div>
+          ))}
+
+          {/* Follow-up reminder */}
+          {log.follow_up_reminder_note && (
+            <div style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '8px', padding: '10px 12px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#633806', marginBottom: '3px' }}>Follow-up reminder</div>
+              <div style={{ fontSize: '12px', color: '#854F0B' }}>{log.follow_up_reminder_note}</div>
+              {log.follow_up_date && (
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
+                  Due: {new Date(log.follow_up_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+    )
+  }
+
   const statusColor = item.status === 'overdue' ? '#A32D2D' : item.status === 'due-soon' ? '#854F0B' : '#0F6E56'
   const statusBg = item.status === 'overdue' ? '#FCEBEB' : item.status === 'due-soon' ? '#FAEEDA' : '#E1F5EE'
   const statusBorder = item.status === 'overdue' ? '#F09595' : item.status === 'due-soon' ? '#EF9F27' : '#5DCAA5'
@@ -90,6 +232,7 @@ export default function EquipmentDetail({ facility }) {
 
       <div style={{ padding: '14px 16px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
+        {/* Device header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="22" height="22" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -107,6 +250,7 @@ export default function EquipmentDetail({ facility }) {
           </span>
         </div>
 
+        {/* Device info */}
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '9px 0 4px' }}>Device info</div>
           {[
@@ -131,6 +275,7 @@ export default function EquipmentDetail({ facility }) {
           ))}
         </div>
 
+        {/* Maintenance */}
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '9px 0 4px' }}>Maintenance</div>
           {[
@@ -145,6 +290,7 @@ export default function EquipmentDetail({ facility }) {
           ))}
         </div>
 
+        {/* PM Instructions */}
         <div style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '12px', padding: '12px 14px' }}>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#0C447C', marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '5px' }}>
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -156,6 +302,7 @@ export default function EquipmentDetail({ facility }) {
           <div style={{ fontSize: '12px', color: '#185FA5', lineHeight: '1.6' }}>{item.pm_instructions}</div>
         </div>
 
+        {/* Service history */}
         <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
           Service history
         </div>
@@ -165,36 +312,51 @@ export default function EquipmentDetail({ facility }) {
         )}
 
         {logs.map(log => {
-          const dotColor = log.log_type === 'pm' ? '#1D9E75' : log.device_status === 'out-of-service' ? '#E24B4A' : '#EF9F27'
-          const typeLabel = log.log_type === 'pm' ? 'PM' : log.log_type === 'repair' ? 'Repair' : log.log_type === 'inspection' ? 'Inspection' : 'Issue'
+          const tc = typeConfig[log.log_type] || typeConfig.other
           return (
-            <div key={log.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '10px 12px', display: 'flex', gap: '10px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: '4px' }}/>
+            <div key={log.id}
+              onClick={() => setSelectedLog(log.id)}
+              style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '10px 12px', cursor: 'pointer', display: 'flex', gap: '10px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500' }}>{log.what_happened}</div>
-                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#f5f5f5', color: '#888', border: '1px solid #eee' }}>{typeLabel}</span>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{log.what_happened}</div>
+                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
                 </div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{log.what_was_done}</div>
-                {log.parts_list && log.parts_list.length > 0 && (
-                  <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {log.parts_list.filter(p => p.name).map((p, i) => (
-                      <span key={i} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB' }}>
-                        {p.quantity}x {p.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '3px' }}>{log.technician_name}</div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{log.what_was_done}</div>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                  {log.device_status && (
+                    <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
+                      {statusLabels[log.device_status] || log.device_status}
+                    </span>
+                  )}
+                  {log.follow_up_reminder_note && (
+                    <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
+                      Follow-up set
+                    </span>
+                  )}
+                  {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && log.parts_list.filter(p => p.name).map((p, i) => (
+                    <span key={i} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB' }}>
+                      {p.quantity}x {p.name}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>{log.technician_name}</div>
               </div>
-              <div style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>
-                {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                <div style={{ fontSize: '11px', color: '#aaa' }}>
+                  {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
+                <svg width="14" height="14" fill="none" stroke="#ccc" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M9 18l6-6-6-6"/>
+                </svg>
               </div>
             </div>
           )
         })}
       </div>
 
+      {/* Log service button */}
       <div style={{ position: 'fixed', bottom: '70px', left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '430px', background: '#fff', borderTop: '1px solid #eee', padding: '12px 16px' }}>
         <button
           onClick={() => navigate(`/logs/add?equipment=${id}`)}

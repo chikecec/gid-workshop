@@ -35,17 +35,14 @@ export default function Equipment({ facility }) {
   const [equipment, setEquipment] = useState([])
   const [loading, setLoading] = useState(true)
   const [showPanel, setShowPanel] = useState(false)
-  const [locations, setLocations] = useState([])
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({
     types: [],
-    locations: [],
     pmStatus: [],
     opStatus: [],
   })
   const [pendingFilters, setPendingFilters] = useState({
     types: [],
-    locations: [],
     pmStatus: [],
     opStatus: [],
   })
@@ -61,8 +58,6 @@ export default function Equipment({ facility }) {
         if (data) {
           const mapped = data.map(e => ({ ...e, status: getStatus(e) }))
           setEquipment(mapped)
-          const uniqueLocations = [...new Set(data.map(e => e.location).filter(Boolean))]
-          setLocations(uniqueLocations)
         }
         setLoading(false)
       })
@@ -70,7 +65,6 @@ export default function Equipment({ facility }) {
 
   const activeFilterCount =
     filters.types.length +
-    filters.locations.length +
     filters.pmStatus.length +
     filters.opStatus.length
 
@@ -94,7 +88,7 @@ export default function Equipment({ facility }) {
   }
 
   const clearFilters = () => {
-    const empty = { types: [], locations: [], pmStatus: [], opStatus: [] }
+    const empty = { types: [], pmStatus: [], opStatus: [] }
     setFilters(empty)
     setPendingFilters(empty)
     setSearch('')
@@ -110,7 +104,6 @@ export default function Equipment({ facility }) {
       if (!matchesName && !matchesModel && !matchesSerial) return false
     }
     if (filters.types.length && !filters.types.includes(item.type)) return false
-    if (filters.locations.length && !filters.locations.includes(item.location)) return false
     if (filters.pmStatus.length) {
       const match = filters.pmStatus.some(s => {
         if (s === 'overdue') return item.status === 'overdue'
@@ -304,28 +297,13 @@ export default function Equipment({ facility }) {
               </button>
             </div>
 
-            {/* Type */}
+            {/* Equipment type */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Equipment type</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {equipmentTypes.map(t => (
                   <button key={t} onClick={() => togglePending('types', t)} style={chipStyle(pendingFilters.types.includes(t))}>
                     {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Location */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Department / Location</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {locations.length === 0 && (
-                  <div style={{ fontSize: '12px', color: '#aaa' }}>No departments found</div>
-                )}
-                {locations.map(l => (
-                  <button key={l} onClick={() => togglePending('locations', l)} style={chipStyle(pendingFilters.locations.includes(l))}>
-                    {l}
                   </button>
                 ))}
               </div>
@@ -347,7 +325,7 @@ export default function Equipment({ facility }) {
               </div>
             </div>
 
-            {/* Operational Status */}
+            {/* Operational status */}
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Operational status</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>

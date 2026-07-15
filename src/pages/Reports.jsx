@@ -93,7 +93,7 @@ export default function Reports({ facility }) {
 
     let query = supabase
       .from('repair_logs')
-      .select('*, equipment(name, location, room_number, next_pm_date)')
+      .select('*, equipment(name, location, room_number, next_pm_date, model_number, serial_number)')
       .eq('facility_id', facility.id)
       .gte('created_at', filter.startDate)
       .lte('created_at', filter.endDate + 'T23:59:59')
@@ -146,7 +146,7 @@ export default function Reports({ facility }) {
         }
       `}</style>
 
-      {/* Controls — hidden on print */}
+      {/* Controls */}
       <div className="no-print" style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px' }}>
         <div style={{ fontSize: '16px', fontWeight: '500' }}>Reports</div>
         <div style={{ fontSize: '11px', color: '#999', marginTop: '1px' }}>Generate and download weekly reports</div>
@@ -294,7 +294,7 @@ export default function Reports({ facility }) {
             ))}
           </div>
 
-          {/* Status breakdown */}
+          {/* Breakdowns */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             <div>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>By status</div>
@@ -331,11 +331,25 @@ export default function Reports({ facility }) {
                     <div style={{ fontSize: '13px', fontWeight: '600' }}>
                       {index + 1}. {log.equipment?.name || 'Unknown device'}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#666', marginTop: '1px' }}>
+                    <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>
                       {log.equipment?.location}{log.equipment?.room_number ? ` · Room ${log.equipment.room_number}` : ''}
                     </div>
+                    {(log.equipment?.model_number || log.equipment?.serial_number) && (
+                      <div style={{ display: 'flex', gap: '12px', marginTop: '3px' }}>
+                        {log.equipment?.model_number && (
+                          <div style={{ fontSize: '11px', color: '#888' }}>
+                            Model: <span style={{ fontWeight: '500', color: '#333' }}>{log.equipment.model_number}</span>
+                          </div>
+                        )}
+                        {log.equipment?.serial_number && (
+                          <div style={{ fontSize: '11px', color: '#888' }}>
+                            S/N: <span style={{ fontWeight: '500', color: '#333' }}>{log.equipment.serial_number}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: '12px', fontWeight: '500' }}>
                       {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </div>

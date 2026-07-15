@@ -90,6 +90,8 @@ export default function Equipment({ facility }) {
             <div key={item.id}
               onClick={() => navigate(`/equipment/${item.id}`)}
               style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px', cursor: 'pointer' }}>
+
+              {/* Top row — name, type, status badge */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <svg width="20" height="20" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -98,12 +100,30 @@ export default function Equipment({ facility }) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{item.type} · {item.location}</div>
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{item.type} · {item.location}{item.room_number ? ` · ${item.room_number}` : ''}</div>
                 </div>
                 <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`, flexShrink: 0 }}>
                   {badge.label}
                 </span>
               </div>
+
+              {/* Model and serial number */}
+              {(item.model_number || item.serial_number) && (
+                <div style={{ display: 'flex', gap: '12px', marginTop: '8px', paddingLeft: '48px' }}>
+                  {item.model_number && (
+                    <div style={{ fontSize: '11px', color: '#888' }}>
+                      Model: <span style={{ fontWeight: '500', color: '#444' }}>{item.model_number}</span>
+                    </div>
+                  )}
+                  {item.serial_number && (
+                    <div style={{ fontSize: '11px', color: '#888' }}>
+                      S/N: <span style={{ fontWeight: '500', color: '#444' }}>{item.serial_number}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PM dates */}
               <div style={{ display: 'flex', gap: '16px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: '#aaa' }}>Last PM</div>
@@ -121,6 +141,15 @@ export default function Equipment({ facility }) {
                       : 'Not set'}
                   </div>
                 </div>
+                {item.operational_status && item.operational_status !== 'working' && (
+                  <div>
+                    <div style={{ fontSize: '10px', color: '#aaa' }}>Device status</div>
+                    <div style={{ fontSize: '11px', fontWeight: '500', marginTop: '1px', color: item.operational_status === 'decommissioned' ? '#444' : '#A32D2D' }}>
+                      {item.operational_status === 'out-of-service' ? 'Out of service' :
+                       item.operational_status === 'decommissioned' ? 'Decommissioned' : ''}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )

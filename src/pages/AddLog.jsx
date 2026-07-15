@@ -121,7 +121,9 @@ export default function AddLog({ facility }) {
 
   const addPart = () => setParts(prev => [...prev, { name: '', quantity: '1', description: '' }])
   const removePart = (index) => setParts(prev => prev.filter((_, i) => i !== index))
-  const updatePart = (index, field, value) => setParts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
+  const updatePart = (index, field, value) => {
+    setParts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
+  }
 
   const getReminderDate = () => {
     if (form.reminderDays) return addDaysISO(form.reminderDays)
@@ -171,7 +173,8 @@ export default function AddLog({ facility }) {
 
     const nextPMDate = isDecommissioned ? null : getNextPMDate()
     const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-    const partsUsedText = validParts.map(p => `${p.quantity}x ${p.name}${p.description ? ` (${p.description})` : ''}`).join(', ')
+    const partsWithCorrectQty = validParts.map(p => ({ ...p, quantity: parseInt(p.quantity) || 1 }))
+    const partsUsedText = partsWithCorrectQty.map(p => `${p.quantity}x ${p.name}${p.description ? ` (${p.description})` : ''}`).join(', ')
 
     const { data: log, error: logError } = await supabase
       .from('repair_logs')
@@ -183,8 +186,7 @@ export default function AddLog({ facility }) {
         root_cause: form.rootCause,
         what_was_done: form.whatWasDone,
         parts_used: partsUsedText || null,
-        parts_list: validParts.length > 0 ? validParts : null,
-        labour_hours: null,
+        parts_list: partsWithCorrectQty.length > 0 ? partsWithCorrectQty : null,
         time_spent: form.timeSpent || null,
         device_status: form.deviceStatus,
         billing_classification: form.billingClassification || null,
@@ -261,7 +263,7 @@ export default function AddLog({ facility }) {
           <select
             value={form.equipmentId}
             onChange={e => handleEquipmentSelect(e.target.value)}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none' }}>
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none', color: '#333' }}>
             <option value="">Select device...</option>
             {equipment.map(e => (
               <option key={e.id} value={e.id}>{e.name} — {e.location}</option>
@@ -282,7 +284,7 @@ export default function AddLog({ facility }) {
                   padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.logType === t.key ? '#85B7EB' : '#eee',
                   background: form.logType === t.key ? '#E6F1FB' : '#fff',
-                  color: form.logType === t.key ? '#0C447C' : '#666',
+                  color: form.logType === t.key ? '#0C447C' : '#333',
                   fontSize: '12px', fontWeight: form.logType === t.key ? '500' : '400',
                   cursor: 'pointer'
                 }}>{t.label}</button>
@@ -305,7 +307,7 @@ export default function AddLog({ facility }) {
               'Describe the fault or symptom...'
             }
             rows={3}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
           />
         </div>
 
@@ -317,7 +319,7 @@ export default function AddLog({ facility }) {
             onChange={e => set('rootCause', e.target.value)}
             placeholder="What caused the fault? (if applicable)"
             rows={2}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
           />
         </div>
 
@@ -336,7 +338,7 @@ export default function AddLog({ facility }) {
               'Describe the repair or action taken...'
             }
             rows={3}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
           />
         </div>
 
@@ -355,7 +357,7 @@ export default function AddLog({ facility }) {
                       value={part.name}
                       onChange={e => updatePart(index, 'name', e.target.value)}
                       placeholder="e.g. Air inlet filter"
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff' }}
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
                     />
                   </div>
                   <div style={{ width: '70px' }}>
@@ -364,8 +366,8 @@ export default function AddLog({ facility }) {
                       type="number"
                       min="1"
                       value={part.quantity}
-                      onChange={e => updatePart(index, 'quantity', e.target.value)}
-                      style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center' }}
+                      onChange={e => updatePart(index, 'quantity', e.target.value === '' ? '1' : e.target.value)}
+                      style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center', color: '#333' }}
                     />
                   </div>
                   {parts.length > 1 && (
@@ -384,7 +386,7 @@ export default function AddLog({ facility }) {
                     value={part.description}
                     onChange={e => updatePart(index, 'description', e.target.value)}
                     placeholder="e.g. OEM replacement, local brand..."
-                    style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff' }}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
                   />
                 </div>
               </div>
@@ -408,7 +410,7 @@ export default function AddLog({ facility }) {
           <select
             value={form.timeSpent}
             onChange={e => set('timeSpent', e.target.value)}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none' }}>
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none', color: '#333' }}>
             <option value="">Select time...</option>
             {timeSpentOptions.map(t => (
               <option key={t} value={t}>{t}</option>
@@ -429,7 +431,7 @@ export default function AddLog({ facility }) {
                   padding: '8px 10px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.billingClassification === b.key ? '#85B7EB' : '#eee',
                   background: form.billingClassification === b.key ? '#E6F1FB' : '#fff',
-                  color: form.billingClassification === b.key ? '#0C447C' : '#666',
+                  color: form.billingClassification === b.key ? '#0C447C' : '#333',
                   fontSize: '11px', fontWeight: form.billingClassification === b.key ? '500' : '400',
                   cursor: 'pointer'
                 }}>{b.label}</button>
@@ -446,7 +448,7 @@ export default function AddLog({ facility }) {
             value={form.lpoNumber}
             onChange={e => set('lpoNumber', e.target.value)}
             placeholder="e.g. LPO-2026-001"
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none' }}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none', color: '#333', background: '#fff' }}
           />
         </div>
 
@@ -463,7 +465,7 @@ export default function AddLog({ facility }) {
                   padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.deviceStatus === s.key ? s.border : '#eee',
                   background: form.deviceStatus === s.key ? s.bg : '#fff',
-                  color: form.deviceStatus === s.key ? s.color : '#666',
+                  color: form.deviceStatus === s.key ? s.color : '#333',
                   fontSize: '12px', fontWeight: form.deviceStatus === s.key ? '500' : '400',
                   cursor: 'pointer'
                 }}>{s.label}</button>
@@ -475,7 +477,7 @@ export default function AddLog({ facility }) {
         {form.deviceStatus && !isDecommissioned && (
           <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '12px', fontWeight: '500' }}>Set a follow-up reminder?</div>
+              <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>Set a follow-up reminder?</div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 {[{ label: 'Yes', val: true }, { label: 'No', val: false }].map(o => (
                   <button key={String(o.val)}
@@ -504,7 +506,7 @@ export default function AddLog({ facility }) {
                           padding: '8px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                           borderColor: form.reminderNote === opt ? '#85B7EB' : '#eee',
                           background: form.reminderNote === opt ? '#E6F1FB' : '#fff',
-                          color: form.reminderNote === opt ? '#0C447C' : '#666',
+                          color: form.reminderNote === opt ? '#0C447C' : '#333',
                           fontSize: '12px', fontWeight: form.reminderNote === opt ? '500' : '400',
                           cursor: 'pointer'
                         }}>{opt}</button>
@@ -514,11 +516,12 @@ export default function AddLog({ facility }) {
                         value={form.reminderNoteCustom}
                         onChange={e => set('reminderNoteCustom', e.target.value)}
                         placeholder="Describe the follow-up..."
-                        style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+                        style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', color: '#333', background: '#fff' }}
                       />
                     )}
                   </div>
                 </div>
+
                 <div>
                   <div style={{ fontSize: '11px', color: '#666', fontWeight: '500', marginBottom: '6px' }}>When should we remind you?</div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
@@ -538,7 +541,7 @@ export default function AddLog({ facility }) {
                     type="date"
                     value={form.reminderCustomDate}
                     onChange={e => { set('reminderCustomDate', e.target.value); set('reminderDays', null) }}
-                    style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+                    style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', color: '#333' }}
                   />
                   {getReminderDate() && (
                     <div style={{ marginTop: '6px', background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '8px', padding: '7px 10px', fontSize: '11px', color: '#0C447C' }}>
@@ -554,10 +557,11 @@ export default function AddLog({ facility }) {
         {/* PM Schedule */}
         {form.deviceStatus && !isDecommissioned && (
           <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ fontSize: '12px', fontWeight: '500' }}>
+            <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
               PM schedule <span style={{ color: '#E24B4A' }}>*</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+
               <div onClick={() => set('pmScheduleAction', 'keep')}
                 style={{ background: form.pmScheduleAction === 'keep' ? '#E1F5EE' : '#fff', border: `1px solid ${form.pmScheduleAction === 'keep' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'keep' ? '#085041' : '#333' }}>Continue on original schedule</div>
@@ -589,7 +593,7 @@ export default function AddLog({ facility }) {
                       onChange={e => set('customPMDays', e.target.value)}
                       placeholder="e.g. 45"
                       onClick={e => e.stopPropagation()}
-                      style={{ width: '70px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none' }}
+                      style={{ width: '70px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', color: '#333', background: '#fff' }}
                     />
                     <span style={{ fontSize: '12px', color: '#888' }}>days from today</span>
                     {form.customPMDays && (
@@ -600,6 +604,7 @@ export default function AddLog({ facility }) {
                   </div>
                 )}
               </div>
+
             </div>
           </div>
         )}
@@ -610,7 +615,7 @@ export default function AddLog({ facility }) {
           </div>
         )}
 
-        {/* Notes */}
+        {/* Engineer comment */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             Engineer comment <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
@@ -620,7 +625,7 @@ export default function AddLog({ facility }) {
             onChange={e => set('followUpNote', e.target.value)}
             placeholder="Any observations or comments..."
             rows={2}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5' }}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
           />
         </div>
 

@@ -290,7 +290,7 @@ export default function Logs({ facility }) {
 
               return (
                 <div key={log.id} onClick={() => setSelected(log.id)}
-                  style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '5px', textAlign: 'center' }}>
 
                   {/* Row 1: name */}
                   <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -302,9 +302,9 @@ export default function Logs({ facility }) {
                     {log.equipment?.location}
                   </div>
 
-                  {/* Row 3: model + serial */}
+                  {/* Row 3: model + serial — centred */}
                   {(log.equipment?.model_number || log.equipment?.serial_number) && (
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
                       {log.equipment?.model_number && (
                         <div style={{ fontSize: '11px', color: '#888' }}>
                           Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span>
@@ -331,8 +331,8 @@ export default function Logs({ facility }) {
                     {log.what_happened}
                   </div>
 
-                  {/* Row 6: status + follow-up bubbles — both left, close together */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                  {/* Row 6: status + follow-up — centred, close together */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '2px' }}>
                     {log.device_status && (
                       <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
                         {statusLabels[log.device_status] || log.device_status}

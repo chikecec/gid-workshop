@@ -4,9 +4,9 @@ import { supabase } from '../supabase'
 
 function getStatus(item) {
   if (!item.next_pm_date) return 'ok'
-  const today = new Date()
-  const next = new Date(item.next_pm_date)
-  const diffDays = Math.ceil((next - today) / (1000 * 60 * 60 * 24))
+  const todayStr = new Date().toLocaleDateString('en-CA')
+  const nextStr = item.next_pm_date.split('T')[0]
+  const diffDays = Math.ceil((new Date(nextStr) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
   if (diffDays < 0) return 'overdue'
   if (diffDays <= 30) return 'due-soon'
   return 'ok'

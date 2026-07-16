@@ -15,12 +15,17 @@ const statusBadge = (status) => {
 
 function getStatus(item) {
   if (!item.next_pm_date) return 'ok'
-  const today = new Date()
-  const next = new Date(item.next_pm_date)
-  const diffDays = Math.ceil((next - today) / (1000 * 60 * 60 * 24))
+  const todayStr = new Date().toLocaleDateString('en-CA')
+  const nextStr = item.next_pm_date.split('T')[0]
+  const diffDays = Math.ceil((new Date(nextStr) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
   if (diffDays < 0) return 'overdue'
   if (diffDays <= 30) return 'due-soon'
   return 'ok'
+}
+
+function getDaysDiff(dateStr) {
+  const todayStr = new Date().toLocaleDateString('en-CA')
+  return Math.ceil((new Date(dateStr.split('T')[0]) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
 }
 
 export default function Equipment({ facility }) {
@@ -64,7 +69,9 @@ export default function Equipment({ facility }) {
   const filtered = equipment.filter(item => {
     if (search) {
       const q = search.toLowerCase()
-      if (!item.name?.toLowerCase().includes(q) && !item.model_number?.toLowerCase().includes(q) && !item.serial_number?.toLowerCase().includes(q)) return false
+      if (!item.name?.toLowerCase().includes(q) &&
+          !item.model_number?.toLowerCase().includes(q) &&
+          !item.serial_number?.toLowerCase().includes(q)) return false
     }
     if (filters.types.length && !filters.types.includes(item.type)) return false
     if (filters.pmStatus.length) {
@@ -149,6 +156,8 @@ export default function Equipment({ facility }) {
         {filtered.map(item => {
           const badge = statusBadge(item.status)
           const pmColor = item.status === 'overdue' ? '#A32D2D' : item.status === 'due-soon' ? '#854F0B' : '#0F6E56'
+          const diff = item.next_pm_date ? getDaysDiff(item.next_pm_date) : null
+
           return (
             <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
               style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
@@ -156,7 +165,7 @@ export default function Equipment({ facility }) {
               {/* Top row */}
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#333' }}>{item.name}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
                   <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
                     {item.type} · {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
                   </div>
@@ -177,13 +186,20 @@ export default function Equipment({ facility }) {
                 <div>
                   <div style={{ fontSize: '10px', color: '#aaa' }}>Last PM</div>
                   <div style={{ fontSize: '11px', fontWeight: '500', color: '#333', marginTop: '1px' }}>
-                    {item.last_pm_date ? new Date(item.last_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not yet done'}
+                    {item.last_pm_date
+                      ? new Date(item.last_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                      : 'Not yet done'}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: '10px', color: '#aaa' }}>Next PM due</div>
                   <div style={{ fontSize: '11px', fontWeight: '500', color: pmColor, marginTop: '1px' }}>
-                    {item.next_pm_date ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}
+                    {item.next_pm_date
+                      ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                      : 'Not set'}
+                    {diff !== null && diff < 0 && <span style={{ fontSize: '10px', marginLeft: '4px' }}>({Math.abs(diff)}d overdue)</span>}
+                    {diff !== null && diff === 0 && <span style={{ fontSize: '10px', marginLeft: '4px' }}>(today)</span>}
+                    {diff !== null && diff > 0 && diff <= 30 && <span style={{ fontSize: '10px', marginLeft: '4px' }}>({diff}d away)</span>}
                   </div>
                 </div>
                 {item.operational_status && item.operational_status !== 'working' && (

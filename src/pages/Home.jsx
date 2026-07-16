@@ -3,22 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 const equipmentTypes = [
-  'Respiratory support',
-  'Monitoring',
-  'Sterilisation',
-  'Cardiology',
-  'Diagnostic',
-  'Laboratory',
-  'Surgical',
-  'Imaging',
-  'Other',
+  'Respiratory support', 'Monitoring', 'Sterilisation', 'Cardiology',
+  'Diagnostic', 'Laboratory', 'Surgical', 'Imaging', 'Other',
 ]
 
 function getStatus(item) {
   if (!item.next_pm_date) return 'ok'
-  const today = new Date()
-  const next = new Date(item.next_pm_date)
-  const diffDays = Math.ceil((next - today) / (1000 * 60 * 60 * 24))
+  const todayStr = new Date().toLocaleDateString('en-CA')
+  const nextStr = item.next_pm_date.split('T')[0]
+  const diffDays = Math.ceil((new Date(nextStr) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
   if (diffDays < 0) return 'overdue'
   if (diffDays <= 30) return 'due-soon'
   return 'ok'
@@ -82,7 +75,7 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
         .order('next_pm_date', { ascending: true })
       if (equipmentData) setEquipment(equipmentData.map(e => ({ ...e, status: getStatus(e) })))
 
-      const today = new Date().toISOString().split('T')[0]
+      const today = new Date().toLocaleDateString('en-CA')
       const { data: reminderData } = await supabase
         .from('follow_up_reminders')
         .select('*, equipment(name, location, model_number, serial_number, type)')
@@ -138,6 +131,13 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
     fontSize: '12px', fontWeight: active ? '500' : '400',
     cursor: 'pointer', whiteSpace: 'nowrap',
   })
+
+  const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+
+  const daysDiff = (dateStr) => {
+    const todayStr = new Date().toLocaleDateString('en-CA')
+    return Math.ceil((new Date(dateStr.split('T')[0]) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
+  }
 
   return (
     <div>
@@ -240,8 +240,8 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                 accentColor="#791F1F"
                 accentBg="#FCEBEB"
                 accentBorder="#F09595"
-                badge={`${Math.abs(Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24)))} days overdue`}
-                secondaryLine={`Next PM was ${new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                badge={`${Math.abs(daysDiff(item.next_pm_date))} days overdue`}
+                secondaryLine={`Next PM was ${formatDate(item.next_pm_date)}`}
                 actionLabel="View & mark done"
               />
             ))}
@@ -258,7 +258,7 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
               </div>
             </div>
             {filteredReminders.map(reminder => {
-              const isOverdue = reminder.reminder_date < new Date().toISOString().split('T')[0]
+              const isOverdue = reminder.reminder_date < new Date().toLocaleDateString('en-CA')
               const eq = {
                 name: reminder.equipment?.name,
                 location: reminder.equipment?.location,
@@ -298,8 +298,8 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                 accentColor="#7A5C00"
                 accentBg="#FEF9EC"
                 accentBorder="#F5C842"
-                badge={`${Math.ceil((new Date(item.next_pm_date) - new Date()) / (1000 * 60 * 60 * 24))}d away`}
-                secondaryLine={`Next PM: ${new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                badge={`${daysDiff(item.next_pm_date)}d away`}
+                secondaryLine={`Next PM: ${formatDate(item.next_pm_date)}`}
                 actionLabel="View instructions"
               />
             ))}

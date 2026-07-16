@@ -292,14 +292,9 @@ export default function Logs({ facility }) {
                 <div key={log.id} onClick={() => setSelected(log.id)}
                   style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
 
-                  {/* Row 1: name (left) + date (right) */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {log.equipment?.name || 'Unknown device'}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>
-                      {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </div>
+                  {/* Row 1: name */}
+                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {log.equipment?.name || 'Unknown device'}
                   </div>
 
                   {/* Row 2: location */}
@@ -336,32 +331,31 @@ export default function Logs({ facility }) {
                     {log.what_happened}
                   </div>
 
-                  {/* Row 6: status (left) + follow-up (right) */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '2px' }}>
-                    <div>
-                      {log.device_status && (
-                        <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
-                          {statusLabels[log.device_status] || log.device_status}
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      {isPending && log.follow_up_reminder_note && (
-                        <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
-                          ⏳ Follow-up pending
-                        </span>
-                      )}
-                      {!isPending && log.follow_up_reminder_note && (
-                        <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#E1F5EE', color: '#085041', border: '1px solid #5DCAA5' }}>
-                          ✓ Follow-up resolved
-                        </span>
-                      )}
-                    </div>
+                  {/* Row 6: status + follow-up bubbles — both left, close together */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                    {log.device_status && (
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
+                        {statusLabels[log.device_status] || log.device_status}
+                      </span>
+                    )}
+                    {isPending && log.follow_up_reminder_note && (
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
+                        ⏳ Follow-up pending
+                      </span>
+                    )}
+                    {!isPending && log.follow_up_reminder_note && (
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#E1F5EE', color: '#085041', border: '1px solid #5DCAA5' }}>
+                        ✓ Follow-up resolved
+                      </span>
+                    )}
                   </div>
 
-                  {/* Row 7: technician */}
-                  <div style={{ fontSize: '11px', color: '#aaa' }}>
-                    {log.technician_name}
+                  {/* Row 7: technician (left) + date (right) */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                    <span style={{ fontSize: '11px', color: '#aaa' }}>{log.technician_name}</span>
+                    <span style={{ fontSize: '11px', color: '#aaa' }}>
+                      {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
                   </div>
 
                 </div>

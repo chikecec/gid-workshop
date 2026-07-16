@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 const typeConfig = {
-  pm: { label: 'Preventive Maintenance (PM)', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5', dot: '#1D9E75' },
-  repair: { label: 'Breakdown Repair', bg: '#FCEBEB', color: '#791F1F', border: '#F09595', dot: '#E24B4A' },
-  assessment: { label: 'Assessment', bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB', dot: '#185FA5' },
-  installation: { label: 'Installation', bg: '#EEEDFE', color: '#3C3489', border: '#A9A4F5', dot: '#6C63FF' },
-  other: { label: 'Other', bg: '#f5f5f5', color: '#444', border: '#ddd', dot: '#aaa' },
+  pm: { label: 'Preventive Maintenance (PM)', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5' },
+  repair: { label: 'Breakdown Repair', bg: '#FCEBEB', color: '#791F1F', border: '#F09595' },
+  assessment: { label: 'Assessment', bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB' },
+  installation: { label: 'Installation', bg: '#EEEDFE', color: '#3C3489', border: '#A9A4F5' },
+  other: { label: 'Other', bg: '#f5f5f5', color: '#444', border: '#ddd' },
 }
 
 const statusLabels = {
@@ -29,6 +29,22 @@ const billingLabels = {
   'out-of-warranty': 'Out of warranty',
   'service-contract': 'Service contract',
   'placement-machine': 'Placement machine',
+}
+
+// Dot colour based on status — consistent with rest of app
+function getStatusDot(status) {
+  if (status === 'successful' || status === 'working') return '#1D9E75'
+  if (status === 'failed' || status === 'out-of-service') return '#E24B4A'
+  if (status === 'decommissioned') return '#aaa'
+  // All pending/waiting/ongoing statuses — amber
+  return '#EF9F27'
+}
+
+function getStatusDotBg(status) {
+  if (status === 'successful' || status === 'working') return '#E1F5EE'
+  if (status === 'failed' || status === 'out-of-service') return '#FCEBEB'
+  if (status === 'decommissioned') return '#f5f5f5'
+  return '#FAEEDA'
 }
 
 function LogDetail({ log, onBack, navigate }) {
@@ -58,12 +74,18 @@ function LogDetail({ log, onBack, navigate }) {
           <span style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
         </div>
 
-        <span style={{ alignSelf: 'flex-start', fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
+          {log.device_status && (
+            <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: getStatusDotBg(log.device_status), color: getStatusDot(log.device_status), border: `1px solid ${getStatusDot(log.device_status)}33` }}>
+              {statusLabels[log.device_status] || log.device_status}
+            </span>
+          )}
+        </div>
 
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
           {[
             { label: 'Technician', value: log.technician_name || '—' },
-            { label: 'Status', value: statusLabels[log.device_status] || log.device_status || '—' },
             { label: 'Time spent', value: log.time_spent || (log.labour_hours ? `${log.labour_hours} hrs` : '—') },
             { label: 'Billing', value: billingLabels[log.billing_classification] || '—' },
             { label: 'LPO / Invoice', value: log.lpo_number || '—' },
@@ -170,7 +192,9 @@ export default function Logs({ facility }) {
   const filtered = logs.filter(log => {
     if (search) {
       const q = search.toLowerCase()
-      if (!log.equipment?.name?.toLowerCase().includes(q) && !log.equipment?.model_number?.toLowerCase().includes(q) && !log.equipment?.serial_number?.toLowerCase().includes(q)) return false
+      if (!log.equipment?.name?.toLowerCase().includes(q) &&
+          !log.equipment?.model_number?.toLowerCase().includes(q) &&
+          !log.equipment?.serial_number?.toLowerCase().includes(q)) return false
     }
     if (filters.serviceTypes.length && !filters.serviceTypes.includes(log.log_type)) return false
     if (filters.statuses.length && !filters.statuses.includes(log.device_status)) return false
@@ -265,6 +289,9 @@ export default function Logs({ facility }) {
             <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{month}</div>
             {monthLogs.map(log => {
               const tc = typeConfig[log.log_type] || typeConfig.other
+              const dotColor = getStatusDot(log.device_status)
+              const dotBg = getStatusDotBg(log.device_status)
+              const isPending = ['still-under-repair', 'still-ongoing', 'waiting-spare-part', 'rescheduled', 'waiting-lpo', 'waiting-management'].includes(log.device_status)
               return (
                 <div key={log.id} onClick={() => setSelected(log.id)}
                   style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer', marginBottom: '8px' }}>
@@ -273,7 +300,7 @@ export default function Logs({ facility }) {
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0 }}/>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
                         <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.equipment?.name || 'Unknown device'}</div>
                       </div>
                       <div style={{ fontSize: '11px', color: '#888', marginTop: '2px', paddingLeft: '14px' }}>{log.equipment?.location}</div>
@@ -287,21 +314,31 @@ export default function Logs({ facility }) {
                     <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`, flexShrink: 0 }}>{tc.label}</span>
                   </div>
 
-                  {/* Divider */}
+                  {/* Divider + secondary info */}
                   <div style={{ borderTop: '1px solid #f5f5f5', marginTop: '8px', paddingTop: '8px', paddingLeft: '14px' }}>
                     <div style={{ fontSize: '11px', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '6px' }}>{log.what_happened}</div>
+
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                      {/* Status badge — colour coded consistently */}
                       {log.device_status && (
-                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
+                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: dotBg, color: dotColor, border: `1px solid ${dotColor}44` }}>
                           {statusLabels[log.device_status] || log.device_status}
                         </span>
                       )}
-                      {log.follow_up_reminder_note && (
+                      {/* Pending follow-up indicator */}
+                      {isPending && log.follow_up_reminder_note && (
                         <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
-                          Follow-up set
+                          ⏳ Follow-up pending
+                        </span>
+                      )}
+                      {/* Resolved indicator */}
+                      {!isPending && log.follow_up_reminder_note && (
+                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#E1F5EE', color: '#085041', border: '1px solid #5DCAA5' }}>
+                          ✓ Follow-up resolved
                         </span>
                       )}
                     </div>
+
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '11px', color: '#aaa' }}>{log.technician_name}</span>
                       <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>

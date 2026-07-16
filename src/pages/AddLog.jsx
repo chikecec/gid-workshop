@@ -53,7 +53,8 @@ function addDaysISO(days) {
 function getNextOccurrence(nextPMDate, intervalDays) {
   if (!nextPMDate || !intervalDays) return nextPMDate
   const today = new Date()
-  let next = new Date(nextPMDate)
+  today.setHours(0, 0, 0, 0)
+  let next = new Date(nextPMDate.split('T')[0] + 'T00:00:00')
   while (next <= today) {
     next.setDate(next.getDate() + intervalDays)
   }
@@ -65,7 +66,7 @@ export default function AddLog({ facility }) {
   const [searchParams] = useSearchParams()
   const [equipment, setEquipment] = useState([])
   const [selectedEquipment, setSelectedEquipment] = useState(null)
-  const [parts, setParts] = useState([{ name: '', quantity: '1', description: '' }])
+  const [parts, setParts] = useState([{ name: '', quantity: '', description: '' }])
   const [form, setForm] = useState({
     equipmentId: '',
     logType: '',
@@ -119,7 +120,7 @@ export default function AddLog({ facility }) {
     set('pmScheduleAction', '')
   }
 
-  const addPart = () => setParts(prev => [...prev, { name: '', quantity: '1', description: '' }])
+  const addPart = () => setParts(prev => [...prev, { name: '', quantity: '', description: '' }])
   const removePart = (index) => setParts(prev => prev.filter((_, i) => i !== index))
   const updatePart = (index, field, value) => {
     setParts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
@@ -173,8 +174,13 @@ export default function AddLog({ facility }) {
 
     const nextPMDate = isDecommissioned ? null : getNextPMDate()
     const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-    const partsWithCorrectQty = validParts.map(p => ({ ...p, quantity: parseInt(p.quantity) || null }))
-    const partsUsedText = partsWithCorrectQty.map(p => `${p.quantity}x ${p.name}${p.description ? ` (${p.description})` : ''}`).join(', ')
+    const partsWithCorrectQty = validParts.map(p => ({
+      ...p,
+      quantity: p.quantity ? parseInt(p.quantity) : null
+    }))
+    const partsUsedText = partsWithCorrectQty.map(p =>
+      `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
+    ).join(', ')
 
     const { data: log, error: logError } = await supabase
       .from('repair_logs')
@@ -260,9 +266,7 @@ export default function AddLog({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             Which device? <span style={{ color: '#E24B4A' }}>*</span>
           </div>
-          <select
-            value={form.equipmentId}
-            onChange={e => handleEquipmentSelect(e.target.value)}
+          <select value={form.equipmentId} onChange={e => handleEquipmentSelect(e.target.value)}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none', color: '#333' }}>
             <option value="">Select device...</option>
             {equipment.map(e => (
@@ -278,8 +282,7 @@ export default function AddLog({ facility }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {serviceTypes.map(t => (
-              <button key={t.key}
-                onClick={() => set('logType', t.key)}
+              <button key={t.key} onClick={() => set('logType', t.key)}
                 style={{
                   padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.logType === t.key ? '#85B7EB' : '#eee',
@@ -297,9 +300,7 @@ export default function AddLog({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             What happened? <span style={{ color: '#E24B4A' }}>*</span>
           </div>
-          <textarea
-            value={form.whatHappened}
-            onChange={e => set('whatHappened', e.target.value)}
+          <textarea value={form.whatHappened} onChange={e => set('whatHappened', e.target.value)}
             placeholder={
               form.logType === 'pm' ? 'Describe what was checked and found during PM...' :
               form.logType === 'assessment' ? 'Describe the assessment findings...' :
@@ -314,9 +315,7 @@ export default function AddLog({ facility }) {
         {/* Root cause */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Root cause</div>
-          <textarea
-            value={form.rootCause}
-            onChange={e => set('rootCause', e.target.value)}
+          <textarea value={form.rootCause} onChange={e => set('rootCause', e.target.value)}
             placeholder="What caused the fault? (if applicable)"
             rows={2}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
@@ -328,9 +327,7 @@ export default function AddLog({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             What was done? <span style={{ color: '#E24B4A' }}>*</span>
           </div>
-          <textarea
-            value={form.whatWasDone}
-            onChange={e => set('whatWasDone', e.target.value)}
+          <textarea value={form.whatWasDone} onChange={e => set('whatWasDone', e.target.value)}
             placeholder={
               form.logType === 'pm' ? 'Describe the PM steps completed...' :
               form.logType === 'assessment' ? 'Describe assessment steps and recommendations...' :
@@ -353,9 +350,7 @@ export default function AddLog({ facility }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Part name</div>
-                    <input
-                      value={part.name}
-                      onChange={e => updatePart(index, 'name', e.target.value)}
+                    <input value={part.name} onChange={e => updatePart(index, 'name', e.target.value)}
                       placeholder="e.g. Air inlet filter"
                       style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
                     />
@@ -363,16 +358,15 @@ export default function AddLog({ facility }) {
                   <div style={{ width: '70px' }}>
                     <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Qty</div>
                     <input
-                      type="number"
-                      min="1"
+                      type="text"
                       value={part.quantity}
-                      onChange={e => updatePart(index, 'quantity', e.target.value === '' ? '1' : e.target.value)}
+                      onChange={e => updatePart(index, 'quantity', e.target.value)}
+                      placeholder="e.g. 2"
                       style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center', color: '#333' }}
                     />
                   </div>
                   {parts.length > 1 && (
-                    <button
-                      onClick={() => removePart(index)}
+                    <button onClick={() => removePart(index)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F09595', padding: '4px', marginTop: '14px', flexShrink: 0 }}>
                       <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                         <path d="M18 6L6 18M6 6l12 12"/>
@@ -382,17 +376,14 @@ export default function AddLog({ facility }) {
                 </div>
                 <div>
                   <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Description <span style={{ color: '#bbb' }}>(optional)</span></div>
-                  <input
-                    value={part.description}
-                    onChange={e => updatePart(index, 'description', e.target.value)}
+                  <input value={part.description} onChange={e => updatePart(index, 'description', e.target.value)}
                     placeholder="e.g. OEM replacement, local brand..."
                     style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
                   />
                 </div>
               </div>
             ))}
-            <button
-              onClick={addPart}
+            <button onClick={addPart}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', border: '1px dashed #ddd', background: 'transparent', fontSize: '12px', color: '#185FA5', cursor: 'pointer' }}>
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M12 5v14M5 12h14"/>
@@ -407,14 +398,10 @@ export default function AddLog({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             Time spent on task <span style={{ color: '#aaa', fontWeight: '400' }}>(excluding travel)</span>
           </div>
-          <select
-            value={form.timeSpent}
-            onChange={e => set('timeSpent', e.target.value)}
+          <select value={form.timeSpent} onChange={e => set('timeSpent', e.target.value)}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none', color: '#333' }}>
             <option value="">Select time...</option>
-            {timeSpentOptions.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
+            {timeSpentOptions.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
 
@@ -439,14 +426,12 @@ export default function AddLog({ facility }) {
           </div>
         </div>
 
-        {/* LPO / Invoice number */}
+        {/* LPO number */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             LPO / Invoice number <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
           </div>
-          <input
-            value={form.lpoNumber}
-            onChange={e => set('lpoNumber', e.target.value)}
+          <input value={form.lpoNumber} onChange={e => set('lpoNumber', e.target.value)}
             placeholder="e.g. LPO-2026-001"
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', outline: 'none', color: '#333', background: '#fff' }}
           />
@@ -459,8 +444,7 @@ export default function AddLog({ facility }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {statusOptions.map(s => (
-              <button key={s.key}
-                onClick={() => set('deviceStatus', s.key)}
+              <button key={s.key} onClick={() => set('deviceStatus', s.key)}
                 style={{
                   padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.deviceStatus === s.key ? s.border : '#eee',
@@ -480,8 +464,7 @@ export default function AddLog({ facility }) {
               <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>Set a follow-up reminder?</div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 {[{ label: 'Yes', val: true }, { label: 'No', val: false }].map(o => (
-                  <button key={String(o.val)}
-                    onClick={() => set('needsReminder', o.val)}
+                  <button key={String(o.val)} onClick={() => set('needsReminder', o.val)}
                     style={{
                       padding: '4px 12px', borderRadius: '99px', border: '1px solid',
                       borderColor: form.needsReminder === o.val ? '#85B7EB' : '#ddd',
@@ -500,8 +483,7 @@ export default function AddLog({ facility }) {
                   <div style={{ fontSize: '11px', color: '#666', fontWeight: '500', marginBottom: '6px' }}>What is the reminder about?</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                     {reminderNoteOptions.map(opt => (
-                      <button key={opt}
-                        onClick={() => set('reminderNote', opt)}
+                      <button key={opt} onClick={() => set('reminderNote', opt)}
                         style={{
                           padding: '8px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                           borderColor: form.reminderNote === opt ? '#85B7EB' : '#eee',
@@ -512,16 +494,13 @@ export default function AddLog({ facility }) {
                         }}>{opt}</button>
                     ))}
                     {form.reminderNote === 'Other' && (
-                      <input
-                        value={form.reminderNoteCustom}
-                        onChange={e => set('reminderNoteCustom', e.target.value)}
+                      <input value={form.reminderNoteCustom} onChange={e => set('reminderNoteCustom', e.target.value)}
                         placeholder="Describe the follow-up..."
                         style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', color: '#333', background: '#fff' }}
                       />
                     )}
                   </div>
                 </div>
-
                 <div>
                   <div style={{ fontSize: '11px', color: '#666', fontWeight: '500', marginBottom: '6px' }}>When should we remind you?</div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
@@ -537,9 +516,7 @@ export default function AddLog({ facility }) {
                         }}>{opt.label}</button>
                     ))}
                   </div>
-                  <input
-                    type="date"
-                    value={form.reminderCustomDate}
+                  <input type="date" value={form.reminderCustomDate}
                     onChange={e => { set('reminderCustomDate', e.target.value); set('reminderDays', null) }}
                     style={{ width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', color: '#333' }}
                   />
@@ -586,10 +563,7 @@ export default function AddLog({ facility }) {
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>Choose how many days from today</div>
                 {form.pmScheduleAction === 'custom' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={form.customPMDays}
+                    <input type="text" value={form.customPMDays}
                       onChange={e => set('customPMDays', e.target.value)}
                       placeholder="e.g. 45"
                       onClick={e => e.stopPropagation()}
@@ -620,9 +594,7 @@ export default function AddLog({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             Engineer comment <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
           </div>
-          <textarea
-            value={form.followUpNote}
-            onChange={e => set('followUpNote', e.target.value)}
+          <textarea value={form.followUpNote} onChange={e => set('followUpNote', e.target.value)}
             placeholder="Any observations or comments..."
             rows={2}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
@@ -642,9 +614,7 @@ export default function AddLog({ facility }) {
           style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
           Cancel
         </button>
-        <button
-          onClick={handleSave}
-          disabled={!canSave || saving}
+        <button onClick={handleSave} disabled={!canSave || saving}
           style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: canSave && !saving ? '#185FA5' : '#ccc', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: canSave && !saving ? 'pointer' : 'not-allowed' }}>
           {saving ? 'Saving...' : 'Save log'}
         </button>

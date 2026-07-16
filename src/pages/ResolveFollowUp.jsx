@@ -66,14 +66,6 @@ const statusLabels = {
   'out-of-service': 'Out of service',
 }
 
-const serviceLabels = {
-  'pm': 'Preventive Maintenance (PM)',
-  'repair': 'Breakdown Repair',
-  'assessment': 'Assessment',
-  'installation': 'Installation',
-  'other': 'Other',
-}
-
 function addDaysISO(days) {
   const d = new Date()
   d.setDate(d.getDate() + days)
@@ -99,7 +91,7 @@ export default function ResolveFollowUp({ facility }) {
   const [originalLog, setOriginalLog] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [parts, setParts] = useState([{ name: '', quantity: '1', description: '' }])
+  const [parts, setParts] = useState([{ name: '', quantity: '', description: '' }])
   const [form, setForm] = useState({
     logType: 'repair',
     whatHappened: '',
@@ -161,7 +153,7 @@ export default function ResolveFollowUp({ facility }) {
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
 
-  const addPart = () => setParts(prev => [...prev, { name: '', quantity: '1', description: '' }])
+  const addPart = () => setParts(prev => [...prev, { name: '', quantity: '', description: '' }])
   const removePart = (index) => setParts(prev => prev.filter((_, i) => i !== index))
   const updatePart = (index, field, value) => setParts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
 
@@ -212,16 +204,19 @@ export default function ResolveFollowUp({ facility }) {
 
     const nextPMDate = isDecommissioned ? null : getNextPMDate()
     const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-    const partsWithQty = validParts.map(p => ({ ...p, quantity: parseInt(p.quantity) || null }))
-    const partsUsedText = partsWithQty.map(p => `${p.quantity}x ${p.name}${p.description ? ` (${p.description})` : ''}`).join(', ')
+    const partsWithQty = validParts.map(p => ({
+      ...p,
+      quantity: p.quantity ? parseInt(p.quantity) : null
+    }))
+    const partsUsedText = partsWithQty.map(p =>
+      `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
+    ).join(', ')
 
-    // Mark reminder as resolved
     await supabase
       .from('follow_up_reminders')
       .update({ status: 'resolved' })
       .eq('id', id)
 
-    // Create new service log
     const { data: newLog } = await supabase
       .from('repair_logs')
       .insert({
@@ -248,7 +243,6 @@ export default function ResolveFollowUp({ facility }) {
       .select()
       .single()
 
-    // Update equipment
     await supabase
       .from('equipment')
       .update({
@@ -258,7 +252,6 @@ export default function ResolveFollowUp({ facility }) {
       })
       .eq('id', equipment.id)
 
-    // Create new reminder if needed
     if (form.needsReminder && getReminderDate() && newLog) {
       await supabase.from('follow_up_reminders').insert({
         equipment_id: equipment.id,
@@ -350,8 +343,7 @@ export default function ResolveFollowUp({ facility }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {serviceTypes.map(t => (
-              <button key={t.key}
-                onClick={() => set('logType', t.key)}
+              <button key={t.key} onClick={() => set('logType', t.key)}
                 style={{
                   padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.logType === t.key ? '#85B7EB' : '#eee',
@@ -369,9 +361,7 @@ export default function ResolveFollowUp({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             What happened? <span style={{ color: '#E24B4A' }}>*</span>
           </div>
-          <textarea
-            value={form.whatHappened}
-            onChange={e => set('whatHappened', e.target.value)}
+          <textarea value={form.whatHappened} onChange={e => set('whatHappened', e.target.value)}
             placeholder="e.g. Spare part arrived and was installed successfully..."
             rows={3}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
@@ -381,9 +371,7 @@ export default function ResolveFollowUp({ facility }) {
         {/* Root cause */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Root cause</div>
-          <textarea
-            value={form.rootCause}
-            onChange={e => set('rootCause', e.target.value)}
+          <textarea value={form.rootCause} onChange={e => set('rootCause', e.target.value)}
             placeholder="What caused the original fault? (if applicable)"
             rows={2}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
@@ -395,9 +383,7 @@ export default function ResolveFollowUp({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             What was done? <span style={{ color: '#E24B4A' }}>*</span>
           </div>
-          <textarea
-            value={form.whatWasDone}
-            onChange={e => set('whatWasDone', e.target.value)}
+          <textarea value={form.whatWasDone} onChange={e => set('whatWasDone', e.target.value)}
             placeholder="Describe what was done to resolve this..."
             rows={3}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
@@ -415,9 +401,7 @@ export default function ResolveFollowUp({ facility }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Part name</div>
-                    <input
-                      value={part.name}
-                      onChange={e => updatePart(index, 'name', e.target.value)}
+                    <input value={part.name} onChange={e => updatePart(index, 'name', e.target.value)}
                       placeholder="e.g. Air inlet filter"
                       style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
                     />
@@ -425,8 +409,10 @@ export default function ResolveFollowUp({ facility }) {
                   <div style={{ width: '70px' }}>
                     <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Qty</div>
                     <input
-                      type="number" min="1" value={part.quantity}
-                      onChange={e => updatePart(index, 'quantity', e.target.value === '' ? '1' : e.target.value)}
+                      type="text"
+                      value={part.quantity}
+                      onChange={e => updatePart(index, 'quantity', e.target.value)}
+                      placeholder="e.g. 2"
                       style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center', color: '#333' }}
                     />
                   </div>
@@ -441,9 +427,7 @@ export default function ResolveFollowUp({ facility }) {
                 </div>
                 <div>
                   <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Description <span style={{ color: '#bbb' }}>(optional)</span></div>
-                  <input
-                    value={part.description}
-                    onChange={e => updatePart(index, 'description', e.target.value)}
+                  <input value={part.description} onChange={e => updatePart(index, 'description', e.target.value)}
                     placeholder="e.g. OEM replacement, local brand..."
                     style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
                   />
@@ -511,8 +495,7 @@ export default function ResolveFollowUp({ facility }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {statusOptions.map(s => (
-              <button key={s.key}
-                onClick={() => set('deviceStatus', s.key)}
+              <button key={s.key} onClick={() => set('deviceStatus', s.key)}
                 style={{
                   padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
                   borderColor: form.deviceStatus === s.key ? s.border : '#eee',
@@ -532,8 +515,7 @@ export default function ResolveFollowUp({ facility }) {
               <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>Set another follow-up reminder?</div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 {[{ label: 'Yes', val: true }, { label: 'No', val: false }].map(o => (
-                  <button key={String(o.val)}
-                    onClick={() => set('needsReminder', o.val)}
+                  <button key={String(o.val)} onClick={() => set('needsReminder', o.val)}
                     style={{
                       padding: '4px 12px', borderRadius: '99px', border: '1px solid',
                       borderColor: form.needsReminder === o.val ? '#85B7EB' : '#ddd',
@@ -630,7 +612,7 @@ export default function ResolveFollowUp({ facility }) {
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>Choose how many days from today</div>
                 {form.pmScheduleAction === 'custom' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                    <input type="number" min="1" value={form.customPMDays}
+                    <input type="text" value={form.customPMDays}
                       onChange={e => set('customPMDays', e.target.value)}
                       onClick={e => e.stopPropagation()}
                       placeholder="e.g. 45"

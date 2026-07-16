@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 const typeConfig = {
-  pm: { label: 'Preventive Maintenance (PM)', bg: '#E1F5EE', color: '#085041', border: '#5DCAA5' },
-  repair: { label: 'Breakdown Repair', bg: '#FCEBEB', color: '#791F1F', border: '#F09595' },
-  assessment: { label: 'Assessment', bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB' },
-  installation: { label: 'Installation', bg: '#EEEDFE', color: '#3C3489', border: '#A9A4F5' },
-  other: { label: 'Other', bg: '#f5f5f5', color: '#444', border: '#ddd' },
+  pm: { label: 'Preventive Maintenance (PM)' },
+  repair: { label: 'Breakdown Repair' },
+  assessment: { label: 'Assessment' },
+  installation: { label: 'Installation' },
+  other: { label: 'Other' },
 }
 
 const statusLabels = {
@@ -31,22 +31,17 @@ const billingLabels = {
   'placement-machine': 'Placement machine',
 }
 
-function getStatusDot(status) {
-  if (status === 'successful' || status === 'working') return '#1D9E75'
-  if (status === 'failed' || status === 'out-of-service') return '#E24B4A'
-  if (status === 'decommissioned') return '#aaa'
-  return '#EF9F27'
-}
-
-function getStatusDotBg(status) {
-  if (status === 'successful' || status === 'working') return '#E1F5EE'
-  if (status === 'failed' || status === 'out-of-service') return '#FCEBEB'
-  if (status === 'decommissioned') return '#f5f5f5'
-  return '#FAEEDA'
+function getStatusColor(status) {
+  if (status === 'successful' || status === 'working') return { color: '#085041', bg: '#E1F5EE', border: '#5DCAA5' }
+  if (status === 'failed' || status === 'out-of-service') return { color: '#791F1F', bg: '#FCEBEB', border: '#F09595' }
+  if (status === 'decommissioned') return { color: '#444', bg: '#f5f5f5', border: '#ddd' }
+  return { color: '#633806', bg: '#FAEEDA', border: '#EF9F27' }
 }
 
 function LogDetail({ log, onBack, navigate }) {
   const tc = typeConfig[log.log_type] || typeConfig.other
+  const sc = getStatusColor(log.device_status)
+
   return (
     <div>
       <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -58,32 +53,32 @@ function LogDetail({ log, onBack, navigate }) {
 
       <div style={{ padding: '14px 16px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>{log.equipment?.name || 'Unknown device'}</div>
-            <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{log.equipment?.location}</div>
-            {(log.equipment?.model_number || log.equipment?.serial_number) && (
-              <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
-                {log.equipment?.model_number && <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>}
-                {log.equipment?.serial_number && <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>}
-              </div>
-            )}
-          </div>
-          <span style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+        {/* Device info */}
+        <div>
+          <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>{log.equipment?.name || 'Unknown device'}</div>
+          <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{log.equipment?.location}</div>
+          {(log.equipment?.model_number || log.equipment?.serial_number) && (
+            <div style={{ display: 'flex', gap: '10px', marginTop: '2px', flexWrap: 'wrap' }}>
+              {log.equipment?.model_number && <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>}
+              {log.equipment?.serial_number && <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>}
+            </div>
+          )}
+          <div style={{ fontSize: '11px', color: '#aaa', marginTop: '3px' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
         </div>
 
+        {/* Service type and status */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', color: '#666' }}>Service type: <span style={{ fontWeight: '500', color: '#333' }}>{tc.label}</span></span>
+          <div style={{ fontSize: '12px', color: '#888' }}>Service type: <span style={{ fontWeight: '500', color: '#333' }}>{tc.label}</span></div>
         </div>
-
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {log.device_status && (
-            <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: getStatusDotBg(log.device_status), color: getStatusDot(log.device_status), border: `1px solid ${getStatusDot(log.device_status)}44` }}>
+        {log.device_status && (
+          <div style={{ display: 'inline-flex' }}>
+            <span style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '99px', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
               {statusLabels[log.device_status] || log.device_status}
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
+        {/* Key fields */}
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
           {[
             { label: 'Technician', value: log.technician_name || '—' },
@@ -98,6 +93,7 @@ function LogDetail({ log, onBack, navigate }) {
           ))}
         </div>
 
+        {/* Parts */}
         {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
           <div>
             <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Parts used</div>
@@ -115,6 +111,7 @@ function LogDetail({ log, onBack, navigate }) {
           </div>
         )}
 
+        {/* Text sections */}
         {[
           { label: 'What was found', value: log.what_happened },
           { label: 'Root cause', value: log.root_cause },
@@ -127,6 +124,7 @@ function LogDetail({ log, onBack, navigate }) {
           </div>
         ))}
 
+        {/* Follow-up */}
         {log.follow_up_reminder_note && (
           <div style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '8px', padding: '10px 12px' }}>
             <div style={{ fontSize: '11px', fontWeight: '500', color: '#633806', marginBottom: '3px' }}>Follow-up reminder</div>
@@ -139,6 +137,7 @@ function LogDetail({ log, onBack, navigate }) {
           </div>
         )}
 
+        {/* View device */}
         <div onClick={() => navigate(`/equipment/${log.equipment_id}`)}
           style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '8px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <svg width="15" height="15" fill="none" stroke="#185FA5" strokeWidth="2" viewBox="0 0 24 24">
@@ -230,8 +229,6 @@ export default function Logs({ facility }) {
     return <LogDetail log={log} onBack={() => setSelected(null)} navigate={navigate} />
   }
 
-  const INDENT = '14px'
-
   return (
     <div>
       <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -292,81 +289,73 @@ export default function Logs({ facility }) {
             <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{month}</div>
             {monthLogs.map(log => {
               const tc = typeConfig[log.log_type] || typeConfig.other
-              const dotColor = getStatusDot(log.device_status)
-              const dotBg = getStatusDotBg(log.device_status)
+              const sc = getStatusColor(log.device_status)
               const isPending = ['still-under-repair', 'still-ongoing', 'waiting-spare-part', 'rescheduled', 'waiting-lpo', 'waiting-management'].includes(log.device_status)
 
               return (
                 <div key={log.id} onClick={() => setSelected(log.id)}
-                  style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer', marginBottom: '8px' }}>
+                  style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
 
-                  {/* Header row — dot + name + date */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
-                      <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {log.equipment?.name || 'Unknown device'}
-                      </div>
+                  {/* Row 1: name + date */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {log.equipment?.name || 'Unknown device'}
                     </div>
-                    <span style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>
+                    <div style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>
                       {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </span>
+                    </div>
                   </div>
 
-                  {/* All remaining rows — indented to align with device name */}
-                  <div style={{ paddingLeft: INDENT, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {/* Row 2: location */}
+                  <div style={{ fontSize: '11px', color: '#888' }}>{log.equipment?.location}</div>
 
-                    {/* Location */}
-                    <div style={{ fontSize: '11px', color: '#888' }}>{log.equipment?.location}</div>
+                  {/* Row 3: model + serial */}
+                  {(log.equipment?.model_number || log.equipment?.serial_number) && (
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      {log.equipment?.model_number && (
+                        <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>
+                      )}
+                      {log.equipment?.serial_number && (
+                        <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>
+                      )}
+                    </div>
+                  )}
 
-                    {/* Model and serial */}
-                    {(log.equipment?.model_number || log.equipment?.serial_number) && (
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        {log.equipment?.model_number && (
-                          <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>
-                        )}
-                        {log.equipment?.serial_number && (
-                          <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>
-                        )}
-                      </div>
+                  {/* Divider */}
+                  <div style={{ borderTop: '1px solid #f5f5f5', margin: '4px 0' }} />
+
+                  {/* Row 4: service type */}
+                  <div style={{ fontSize: '11px', color: '#888' }}>
+                    Service type: <span style={{ fontWeight: '500', color: '#333' }}>{tc.label}</span>
+                  </div>
+
+                  {/* Row 5: what happened */}
+                  <div style={{ fontSize: '11px', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {log.what_happened}
+                  </div>
+
+                  {/* Row 6: status + follow-up */}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                    {log.device_status && (
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
+                        {statusLabels[log.device_status] || log.device_status}
+                      </span>
                     )}
-
-                    {/* Divider */}
-                    <div style={{ borderTop: '1px solid #f5f5f5', marginTop: '4px', marginBottom: '4px' }} />
-
-                    {/* Service type — plain text, no bubble */}
-                    <div style={{ fontSize: '11px', color: '#888' }}>
-                      Service type: <span style={{ fontWeight: '500', color: '#333' }}>{tc.label}</span>
-                    </div>
-
-                    {/* What happened */}
-                    <div style={{ fontSize: '11px', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {log.what_happened}
-                    </div>
-
-                    {/* Status bubble + follow-up indicator */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
-                      {log.device_status && (
-                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: dotBg, color: dotColor, border: `1px solid ${dotColor}44` }}>
-                          {statusLabels[log.device_status] || log.device_status}
-                        </span>
-                      )}
-                      {isPending && log.follow_up_reminder_note && (
-                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
-                          ⏳ Follow-up pending
-                        </span>
-                      )}
-                      {!isPending && log.follow_up_reminder_note && (
-                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#E1F5EE', color: '#085041', border: '1px solid #5DCAA5' }}>
-                          ✓ Follow-up resolved
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Technician */}
-                    <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>{log.technician_name}</div>
-
+                    {isPending && log.follow_up_reminder_note && (
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
+                        ⏳ Follow-up pending
+                      </span>
+                    )}
+                    {!isPending && log.follow_up_reminder_note && (
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#E1F5EE', color: '#085041', border: '1px solid #5DCAA5' }}>
+                        ✓ Follow-up resolved
+                      </span>
+                    )}
                   </div>
+
+                  {/* Row 7: technician */}
+                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>{log.technician_name}</div>
+
                 </div>
               )
             })}

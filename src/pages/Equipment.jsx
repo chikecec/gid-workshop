@@ -15,17 +15,20 @@ const statusBadge = (status) => {
 
 function getStatus(item) {
   if (!item.next_pm_date) return 'ok'
-  const todayStr = new Date().toLocaleDateString('en-CA')
-  const nextStr = item.next_pm_date.split('T')[0]
-  const diffDays = Math.ceil((new Date(nextStr) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
+  const nextDate = new Date(item.next_pm_date.split('T')[0] + 'T00:00:00')
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((nextDate - todayDate) / (1000 * 60 * 60 * 24))
   if (diffDays < 0) return 'overdue'
   if (diffDays <= 30) return 'due-soon'
   return 'ok'
 }
 
 function getDaysDiff(dateStr) {
-  const todayStr = new Date().toLocaleDateString('en-CA')
-  return Math.ceil((new Date(dateStr.split('T')[0]) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
+  const nextDate = new Date(dateStr.split('T')[0] + 'T00:00:00')
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
+  return Math.round((nextDate - todayDate) / (1000 * 60 * 60 * 24))
 }
 
 export default function Equipment({ facility }) {
@@ -162,7 +165,6 @@ export default function Equipment({ facility }) {
             <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
               style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
 
-              {/* Top row */}
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
@@ -181,13 +183,12 @@ export default function Equipment({ facility }) {
                 </span>
               </div>
 
-              {/* Bottom row */}
               <div style={{ display: 'flex', gap: '16px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: '#aaa' }}>Last PM</div>
                   <div style={{ fontSize: '11px', fontWeight: '500', color: '#333', marginTop: '1px' }}>
                     {item.last_pm_date
-                      ? new Date(item.last_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                      ? new Date(item.last_pm_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                       : 'Not yet done'}
                   </div>
                 </div>
@@ -195,7 +196,7 @@ export default function Equipment({ facility }) {
                   <div style={{ fontSize: '10px', color: '#aaa' }}>Next PM due</div>
                   <div style={{ fontSize: '11px', fontWeight: '500', color: pmColor, marginTop: '1px' }}>
                     {item.next_pm_date
-                      ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                      ? new Date(item.next_pm_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                       : 'Not set'}
                     {diff !== null && diff < 0 && <span style={{ fontSize: '10px', marginLeft: '4px' }}>({Math.abs(diff)}d overdue)</span>}
                     {diff !== null && diff === 0 && <span style={{ fontSize: '10px', marginLeft: '4px' }}>(today)</span>}

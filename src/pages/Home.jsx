@@ -9,12 +9,24 @@ const equipmentTypes = [
 
 function getStatus(item) {
   if (!item.next_pm_date) return 'ok'
-  const todayStr = new Date().toLocaleDateString('en-CA')
-  const nextStr = item.next_pm_date.split('T')[0]
-  const diffDays = Math.ceil((new Date(nextStr) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
+  const nextDate = new Date(item.next_pm_date.split('T')[0] + 'T00:00:00')
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((nextDate - todayDate) / (1000 * 60 * 60 * 24))
   if (diffDays < 0) return 'overdue'
   if (diffDays <= 30) return 'due-soon'
   return 'ok'
+}
+
+function daysDiff(dateStr) {
+  const nextDate = new Date(dateStr.split('T')[0] + 'T00:00:00')
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
+  return Math.round((nextDate - todayDate) / (1000 * 60 * 60 * 24))
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function DeviceCard({ item, onClick, accentColor, accentBg, accentBorder, badge, secondaryLine, actionLabel }) {
@@ -22,7 +34,7 @@ function DeviceCard({ item, onClick, accentColor, accentBg, accentBorder, badge,
     <div onClick={onClick} style={{ background: accentBg, border: `1px solid ${accentBorder}`, borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '13px', fontWeight: '500', color: accentColor }}>{item.name}</div>
+          <div style={{ fontSize: '13px', fontWeight: '500', color: accentColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
           <div style={{ fontSize: '11px', color: accentColor, opacity: 0.8, marginTop: '2px' }}>
             {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
           </div>
@@ -75,7 +87,9 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
         .order('next_pm_date', { ascending: true })
       if (equipmentData) setEquipment(equipmentData.map(e => ({ ...e, status: getStatus(e) })))
 
-      const today = new Date().toLocaleDateString('en-CA')
+      const todayDate = new Date()
+      todayDate.setHours(0, 0, 0, 0)
+      const today = todayDate.toISOString().split('T')[0]
       const { data: reminderData } = await supabase
         .from('follow_up_reminders')
         .select('*, equipment(name, location, model_number, serial_number, type)')
@@ -131,13 +145,6 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
     fontSize: '12px', fontWeight: active ? '500' : '400',
     cursor: 'pointer', whiteSpace: 'nowrap',
   })
-
-  const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-
-  const daysDiff = (dateStr) => {
-    const todayStr = new Date().toLocaleDateString('en-CA')
-    return Math.ceil((new Date(dateStr.split('T')[0]) - new Date(todayStr)) / (1000 * 60 * 60 * 24))
-  }
 
   return (
     <div>
@@ -241,7 +248,7 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
                 accentBg="#FCEBEB"
                 accentBorder="#F09595"
                 badge={`${Math.abs(daysDiff(item.next_pm_date))} days overdue`}
-                secondaryLine={`Next PM was ${formatDate(item.next_pm_date)}`}
+                secondaryLine={`PM was due ${formatDate(item.next_pm_date)}`}
                 actionLabel="View & mark done"
               />
             ))}
@@ -258,7 +265,10 @@ export default function Home({ facility, onSwitchFacility, onSignOut }) {
               </div>
             </div>
             {filteredReminders.map(reminder => {
-              const isOverdue = reminder.reminder_date < new Date().toLocaleDateString('en-CA')
+              const todayDate = new Date()
+              todayDate.setHours(0, 0, 0, 0)
+              const reminderDate = new Date(reminder.reminder_date.split('T')[0] + 'T00:00:00')
+              const isOverdue = reminderDate < todayDate
               const eq = {
                 name: reminder.equipment?.name,
                 location: reminder.equipment?.location,

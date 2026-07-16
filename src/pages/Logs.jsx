@@ -31,12 +31,10 @@ const billingLabels = {
   'placement-machine': 'Placement machine',
 }
 
-// Dot colour based on status — consistent with rest of app
 function getStatusDot(status) {
   if (status === 'successful' || status === 'working') return '#1D9E75'
   if (status === 'failed' || status === 'out-of-service') return '#E24B4A'
   if (status === 'decommissioned') return '#aaa'
-  // All pending/waiting/ongoing statuses — amber
   return '#EF9F27'
 }
 
@@ -74,10 +72,13 @@ function LogDetail({ log, onBack, navigate }) {
           <span style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
         </div>
 
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', color: '#666' }}>Service type: <span style={{ fontWeight: '500', color: '#333' }}>{tc.label}</span></span>
+        </div>
+
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
           {log.device_status && (
-            <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: getStatusDotBg(log.device_status), color: getStatusDot(log.device_status), border: `1px solid ${getStatusDot(log.device_status)}33` }}>
+            <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: getStatusDotBg(log.device_status), color: getStatusDot(log.device_status), border: `1px solid ${getStatusDot(log.device_status)}44` }}>
               {statusLabels[log.device_status] || log.device_status}
             </span>
           )}
@@ -229,6 +230,8 @@ export default function Logs({ facility }) {
     return <LogDetail log={log} onBack={() => setSelected(null)} navigate={navigate} />
   }
 
+  const INDENT = '14px'
+
   return (
     <div>
       <div style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -292,46 +295,67 @@ export default function Logs({ facility }) {
               const dotColor = getStatusDot(log.device_status)
               const dotBg = getStatusDotBg(log.device_status)
               const isPending = ['still-under-repair', 'still-ongoing', 'waiting-spare-part', 'rescheduled', 'waiting-lpo', 'waiting-management'].includes(log.device_status)
+
               return (
                 <div key={log.id} onClick={() => setSelected(log.id)}
                   style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer', marginBottom: '8px' }}>
 
-                  {/* Top row */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
-                        <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.equipment?.name || 'Unknown device'}</div>
+                  {/* Header row — dot + name + date */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
+                      <div style={{ fontSize: '13px', fontWeight: '500', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {log.equipment?.name || 'Unknown device'}
                       </div>
-                      <div style={{ fontSize: '11px', color: '#888', marginTop: '2px', paddingLeft: '14px' }}>{log.equipment?.location}</div>
-                      {(log.equipment?.model_number || log.equipment?.serial_number) && (
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '2px', paddingLeft: '14px' }}>
-                          {log.equipment?.model_number && <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>}
-                          {log.equipment?.serial_number && <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>}
-                        </div>
-                      )}
                     </div>
-                    <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`, flexShrink: 0 }}>{tc.label}</span>
+                    <span style={{ fontSize: '11px', color: '#aaa', flexShrink: 0 }}>
+                      {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
                   </div>
 
-                  {/* Divider + secondary info */}
-                  <div style={{ borderTop: '1px solid #f5f5f5', marginTop: '8px', paddingTop: '8px', paddingLeft: '14px' }}>
-                    <div style={{ fontSize: '11px', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '6px' }}>{log.what_happened}</div>
+                  {/* All remaining rows — indented to align with device name */}
+                  <div style={{ paddingLeft: INDENT, display: 'flex', flexDirection: 'column', gap: '4px' }}>
 
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                      {/* Status badge — colour coded consistently */}
+                    {/* Location */}
+                    <div style={{ fontSize: '11px', color: '#888' }}>{log.equipment?.location}</div>
+
+                    {/* Model and serial */}
+                    {(log.equipment?.model_number || log.equipment?.serial_number) && (
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        {log.equipment?.model_number && (
+                          <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.model_number}</span></div>
+                        )}
+                        {log.equipment?.serial_number && (
+                          <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{log.equipment.serial_number}</span></div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Divider */}
+                    <div style={{ borderTop: '1px solid #f5f5f5', marginTop: '4px', marginBottom: '4px' }} />
+
+                    {/* Service type — plain text, no bubble */}
+                    <div style={{ fontSize: '11px', color: '#888' }}>
+                      Service type: <span style={{ fontWeight: '500', color: '#333' }}>{tc.label}</span>
+                    </div>
+
+                    {/* What happened */}
+                    <div style={{ fontSize: '11px', color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {log.what_happened}
+                    </div>
+
+                    {/* Status bubble + follow-up indicator */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
                       {log.device_status && (
                         <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: dotBg, color: dotColor, border: `1px solid ${dotColor}44` }}>
                           {statusLabels[log.device_status] || log.device_status}
                         </span>
                       )}
-                      {/* Pending follow-up indicator */}
                       {isPending && log.follow_up_reminder_note && (
                         <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
                           ⏳ Follow-up pending
                         </span>
                       )}
-                      {/* Resolved indicator */}
                       {!isPending && log.follow_up_reminder_note && (
                         <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#E1F5EE', color: '#085041', border: '1px solid #5DCAA5' }}>
                           ✓ Follow-up resolved
@@ -339,10 +363,9 @@ export default function Logs({ facility }) {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '11px', color: '#aaa' }}>{log.technician_name}</span>
-                      <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    </div>
+                    {/* Technician */}
+                    <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>{log.technician_name}</div>
+
                   </div>
                 </div>
               )

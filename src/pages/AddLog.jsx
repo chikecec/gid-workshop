@@ -173,7 +173,7 @@ export default function AddLog({ facility }) {
 
     const nextPMDate = isDecommissioned ? null : getNextPMDate()
     const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-    const partsWithCorrectQty = validParts.map(p => ({ ...p, quantity: parseInt(p.quantity) || 1 }))
+    const partsWithCorrectQty = validParts.map(p => ({ ...p, quantity: parseInt(p.quantity) || null }))
     const partsUsedText = partsWithCorrectQty.map(p => `${p.quantity}x ${p.name}${p.description ? ` (${p.description})` : ''}`).join(', ')
 
     const { data: log, error: logError } = await supabase

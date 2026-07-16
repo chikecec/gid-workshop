@@ -212,7 +212,7 @@ export default function ResolveFollowUp({ facility }) {
 
     const nextPMDate = isDecommissioned ? null : getNextPMDate()
     const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-    const partsWithQty = validParts.map(p => ({ ...p, quantity: parseInt(p.quantity) || 1 }))
+    const partsWithQty = validParts.map(p => ({ ...p, quantity: parseInt(p.quantity) || null }))
     const partsUsedText = partsWithQty.map(p => `${p.quantity}x ${p.name}${p.description ? ` (${p.description})` : ''}`).join(', ')
 
     // Mark reminder as resolved

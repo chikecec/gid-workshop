@@ -44,6 +44,25 @@ const billingOptions = [
   { key: 'placement-machine', label: 'Placement machine' },
 ]
 
+const serviceTypes = [
+  { key: 'pm', label: 'Preventive Maintenance (PM)' },
+  { key: 'repair', label: 'Breakdown Repair' },
+  { key: 'assessment', label: 'Assessment' },
+  { key: 'installation', label: 'Installation' },
+  { key: 'other', label: 'Other' },
+]
+
+function emptyIssue() {
+  return {
+    logType: '',
+    whatHappened: '',
+    rootCause: '',
+    whatWasDone: '',
+    billingClassification: '',
+    parts: [{ name: '', quantity: '', description: '' }],
+  }
+}
+
 function addDaysISO(days) {
   const d = new Date()
   d.setDate(d.getDate() + days)
@@ -66,16 +85,11 @@ export default function AddLog({ facility }) {
   const [searchParams] = useSearchParams()
   const [equipment, setEquipment] = useState([])
   const [selectedEquipment, setSelectedEquipment] = useState(null)
-  const [parts, setParts] = useState([{ name: '', quantity: '', description: '' }])
+  const [issues, setIssues] = useState([emptyIssue()])
   const [form, setForm] = useState({
     equipmentId: '',
-    logType: '',
-    whatHappened: '',
-    rootCause: '',
-    whatWasDone: '',
     timeSpent: '',
     deviceStatus: '',
-    billingClassification: '',
     lpoNumber: '',
     followUpNote: '',
     needsReminder: false,
@@ -120,10 +134,38 @@ export default function AddLog({ facility }) {
     set('pmScheduleAction', '')
   }
 
-  const addPart = () => setParts(prev => [...prev, { name: '', quantity: '', description: '' }])
-  const removePart = (index) => setParts(prev => prev.filter((_, i) => i !== index))
-  const updatePart = (index, field, value) => {
-    setParts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
+  // Issue management
+  const updateIssue = (index, key, val) => {
+    setIssues(prev => prev.map((issue, i) => i === index ? { ...issue, [key]: val } : issue))
+  }
+
+  const addIssue = () => setIssues(prev => [...prev, emptyIssue()])
+
+  const removeIssue = (index) => setIssues(prev => prev.filter((_, i) => i !== index))
+
+  // Parts management per issue
+  const addPart = (issueIndex) => {
+    setIssues(prev => prev.map((issue, i) => i === issueIndex
+      ? { ...issue, parts: [...issue.parts, { name: '', quantity: '', description: '' }] }
+      : issue
+    ))
+  }
+
+  const removePart = (issueIndex, partIndex) => {
+    setIssues(prev => prev.map((issue, i) => i === issueIndex
+      ? { ...issue, parts: issue.parts.filter((_, pi) => pi !== partIndex) }
+      : issue
+    ))
+  }
+
+  const updatePart = (issueIndex, partIndex, field, value) => {
+    setIssues(prev => prev.map((issue, i) => i === issueIndex
+      ? {
+          ...issue,
+          parts: issue.parts.map((p, pi) => pi === partIndex ? { ...p, [field]: value } : p)
+        }
+      : issue
+    ))
   }
 
   const getReminderDate = () => {
@@ -153,10 +195,10 @@ export default function AddLog({ facility }) {
         .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     : null
 
-  const validParts = parts.filter(p => p.name.trim())
   const isDecommissioned = form.deviceStatus === 'decommissioned'
 
-  const canSave = form.equipmentId && form.logType && form.whatHappened && form.whatWasDone &&
+  const canSave = form.equipmentId &&
+    issues.every(issue => issue.logType && issue.whatHappened && issue.whatWasDone) &&
     form.deviceStatus && (isDecommissioned || form.pmScheduleAction) &&
     (!form.needsReminder || (getReminderDate() && (form.reminderNote || form.reminderNoteCustom)))
 
@@ -174,31 +216,55 @@ export default function AddLog({ facility }) {
 
     const nextPMDate = isDecommissioned ? null : getNextPMDate()
     const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-    const partsWithCorrectQty = validParts.map(p => ({
-      ...p,
-      quantity: p.quantity ? parseInt(p.quantity) : null
-    }))
-    const partsUsedText = partsWithCorrectQty.map(p =>
-      `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
-    ).join(', ')
+
+    // Build issues payload
+    const issuesPayload = issues.map((issue, i) => {
+      const validParts = issue.parts.filter(p => p.name.trim())
+      const partsWithQty = validParts.map(p => ({
+        ...p,
+        quantity: p.quantity ? parseInt(p.quantity) : null
+      }))
+      return {
+        issue_number: i + 1,
+        log_type: issue.logType,
+        what_happened: issue.whatHappened,
+        root_cause: issue.rootCause || null,
+        what_was_done: issue.whatWasDone,
+        billing_classification: issue.billingClassification || null,
+        parts_list: partsWithQty.length > 0 ? partsWithQty : null,
+        parts_used: partsWithQty.map(p =>
+          `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
+        ).join(', ') || null,
+      }
+    })
+
+    // Use first issue for top-level fields (for backwards compatibility)
+    const primaryIssue = issuesPayload[0]
 
     const { data: log, error: logError } = await supabase
       .from('repair_logs')
       .insert({
         equipment_id: form.equipmentId,
         facility_id: facility.id,
-        log_type: form.logType,
-        what_happened: form.whatHappened,
-        root_cause: form.rootCause,
-        what_was_done: form.whatWasDone,
-        parts_used: partsUsedText || null,
-        parts_list: partsWithCorrectQty.length > 0 ? partsWithCorrectQty : null,
+        log_type: primaryIssue.log_type,
+        what_happened: issues.length === 1
+          ? primaryIssue.what_happened
+          : issuesPayload.map((issue, i) => `Issue ${i + 1}: ${issue.what_happened}`).join('\n\n'),
+        root_cause: issues.length === 1
+          ? primaryIssue.root_cause
+          : issuesPayload.filter(i => i.root_cause).map((issue, i) => `Issue ${issue.issue_number}: ${issue.root_cause}`).join('\n\n'),
+        what_was_done: issues.length === 1
+          ? primaryIssue.what_was_done
+          : issuesPayload.map((issue, i) => `Issue ${i + 1}: ${issue.what_was_done}`).join('\n\n'),
+        parts_list: issuesPayload.flatMap(i => i.parts_list || []),
+        parts_used: issuesPayload.map(i => i.parts_used).filter(Boolean).join('; ') || null,
+        billing_classification: primaryIssue.billing_classification,
+        issues: issuesPayload,
         time_spent: form.timeSpent || null,
         device_status: form.deviceStatus,
-        billing_classification: form.billingClassification || null,
         lpo_number: form.lpoNumber || null,
-        outcome: form.logType,
-        follow_up_note: form.followUpNote,
+        outcome: primaryIssue.log_type,
+        follow_up_note: form.followUpNote || null,
         follow_up_date: getReminderDate(),
         follow_up_reminder_note: reminderNote || null,
         pm_schedule_action: form.pmScheduleAction || null,
@@ -220,7 +286,7 @@ export default function AddLog({ facility }) {
       .update({
         operational_status: form.deviceStatus,
         next_pm_date: nextPMDate,
-        ...(form.logType === 'pm' ? { last_pm_date: new Date().toISOString().split('T')[0] } : {}),
+        ...(issues.some(i => i.logType === 'pm') ? { last_pm_date: new Date().toISOString().split('T')[0] } : {}),
       })
       .eq('id', form.equipmentId)
 
@@ -238,14 +304,6 @@ export default function AddLog({ facility }) {
 
     navigate(-1)
   }
-
-  const serviceTypes = [
-    { key: 'pm', label: 'Preventive Maintenance (PM)' },
-    { key: 'repair', label: 'Breakdown Repair' },
-    { key: 'assessment', label: 'Assessment' },
-    { key: 'installation', label: 'Installation' },
-    { key: 'other', label: 'Other' },
-  ]
 
   return (
     <div>
@@ -275,128 +333,184 @@ export default function AddLog({ facility }) {
           </select>
         </div>
 
-        {/* Service type */}
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
-            Service type <span style={{ color: '#E24B4A' }}>*</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {serviceTypes.map(t => (
-              <button key={t.key} onClick={() => set('logType', t.key)}
-                style={{
-                  padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
-                  borderColor: form.logType === t.key ? '#85B7EB' : '#eee',
-                  background: form.logType === t.key ? '#E6F1FB' : '#fff',
-                  color: form.logType === t.key ? '#0C447C' : '#333',
-                  fontSize: '12px', fontWeight: form.logType === t.key ? '500' : '400',
-                  cursor: 'pointer'
-                }}>{t.label}</button>
-            ))}
-          </div>
-        </div>
+        {/* Issues */}
+        {issues.map((issue, issueIndex) => (
+          <div key={issueIndex} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-        {/* What happened */}
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
-            What happened? <span style={{ color: '#E24B4A' }}>*</span>
-          </div>
-          <textarea value={form.whatHappened} onChange={e => set('whatHappened', e.target.value)}
-            placeholder={
-              form.logType === 'pm' ? 'Describe what was checked and found during PM...' :
-              form.logType === 'assessment' ? 'Describe the assessment findings...' :
-              form.logType === 'installation' ? 'Describe the installation...' :
-              'Describe the fault or symptom...'
-            }
-            rows={3}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
-          />
-        </div>
-
-        {/* Root cause */}
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Root cause</div>
-          <textarea value={form.rootCause} onChange={e => set('rootCause', e.target.value)}
-            placeholder="What caused the fault? (if applicable)"
-            rows={2}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
-          />
-        </div>
-
-        {/* What was done */}
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
-            What was done? <span style={{ color: '#E24B4A' }}>*</span>
-          </div>
-          <textarea value={form.whatWasDone} onChange={e => set('whatWasDone', e.target.value)}
-            placeholder={
-              form.logType === 'pm' ? 'Describe the PM steps completed...' :
-              form.logType === 'assessment' ? 'Describe assessment steps and recommendations...' :
-              form.logType === 'installation' ? 'Describe what was installed and configured...' :
-              'Describe the repair or action taken...'
-            }
-            rows={3}
-            style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
-          />
-        </div>
-
-        {/* Parts used */}
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>
-            Parts used <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {parts.map((part, index) => (
-              <div key={index} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Part name</div>
-                    <input value={part.name} onChange={e => updatePart(index, 'name', e.target.value)}
-                      placeholder="e.g. Air inlet filter"
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
-                    />
-                  </div>
-                  <div style={{ width: '70px' }}>
-                    <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Qty</div>
-                    <input
-                      type="text"
-                      value={part.quantity}
-                      onChange={e => updatePart(index, 'quantity', e.target.value)}
-                      placeholder="e.g. 2"
-                      style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center', color: '#333' }}
-                    />
-                  </div>
-                  {parts.length > 1 && (
-                    <button onClick={() => removePart(index)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F09595', padding: '4px', marginTop: '14px', flexShrink: 0 }}>
-                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M18 6L6 18M6 6l12 12"/>
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                <div>
-                  <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Description <span style={{ color: '#bbb' }}>(optional)</span></div>
-                  <input value={part.description} onChange={e => updatePart(index, 'description', e.target.value)}
-                    placeholder="e.g. OEM replacement, local brand..."
-                    style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
-                  />
-                </div>
+            {/* Issue header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: '#185FA5' }}>
+                {issues.length > 1 ? `Issue ${issueIndex + 1}` : 'Service details'}
               </div>
-            ))}
-            <button onClick={addPart}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', border: '1px dashed #ddd', background: 'transparent', fontSize: '12px', color: '#185FA5', cursor: 'pointer' }}>
-              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-              Add another part
-            </button>
-          </div>
-        </div>
+              {issues.length > 1 && (
+                <button onClick={() => removeIssue(issueIndex)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F09595', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                  Remove
+                </button>
+              )}
+            </div>
 
-        {/* Time spent */}
+            {/* Service type */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
+                Service type <span style={{ color: '#E24B4A' }}>*</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {serviceTypes.map(t => (
+                  <button key={t.key} onClick={() => updateIssue(issueIndex, 'logType', t.key)}
+                    style={{
+                      padding: '10px 12px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
+                      borderColor: issue.logType === t.key ? '#85B7EB' : '#eee',
+                      background: issue.logType === t.key ? '#E6F1FB' : '#fff',
+                      color: issue.logType === t.key ? '#0C447C' : '#333',
+                      fontSize: '12px', fontWeight: issue.logType === t.key ? '500' : '400',
+                      cursor: 'pointer'
+                    }}>{t.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* What happened */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
+                What happened? <span style={{ color: '#E24B4A' }}>*</span>
+              </div>
+              <textarea value={issue.whatHappened}
+                onChange={e => updateIssue(issueIndex, 'whatHappened', e.target.value)}
+                placeholder={
+                  issue.logType === 'pm' ? 'Describe what was checked and found during PM...' :
+                  issue.logType === 'assessment' ? 'Describe the assessment findings...' :
+                  issue.logType === 'installation' ? 'Describe the installation...' :
+                  'Describe the fault or symptom...'
+                }
+                rows={3}
+                style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
+              />
+            </div>
+
+            {/* Root cause */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>Root cause</div>
+              <textarea value={issue.rootCause}
+                onChange={e => updateIssue(issueIndex, 'rootCause', e.target.value)}
+                placeholder="What caused the fault? (if applicable)"
+                rows={2}
+                style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
+              />
+            </div>
+
+            {/* What was done */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
+                What was done? <span style={{ color: '#E24B4A' }}>*</span>
+              </div>
+              <textarea value={issue.whatWasDone}
+                onChange={e => updateIssue(issueIndex, 'whatWasDone', e.target.value)}
+                placeholder={
+                  issue.logType === 'pm' ? 'Describe the PM steps completed...' :
+                  issue.logType === 'assessment' ? 'Describe assessment steps and recommendations...' :
+                  issue.logType === 'installation' ? 'Describe what was installed and configured...' :
+                  'Describe the repair or action taken...'
+                }
+                rows={3}
+                style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
+              />
+            </div>
+
+            {/* Parts used */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>
+                Parts used <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {issue.parts.map((part, partIndex) => (
+                  <div key={partIndex} style={{ background: '#fff', border: '1px solid #eee', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Part name</div>
+                        <input value={part.name}
+                          onChange={e => updatePart(issueIndex, partIndex, 'name', e.target.value)}
+                          placeholder="e.g. Air inlet filter"
+                          style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
+                        />
+                      </div>
+                      <div style={{ width: '70px' }}>
+                        <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Qty</div>
+                        <input type="text" value={part.quantity}
+                          onChange={e => updatePart(issueIndex, partIndex, 'quantity', e.target.value)}
+                          placeholder="e.g. 2"
+                          style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center', color: '#333' }}
+                        />
+                      </div>
+                      {issue.parts.length > 1 && (
+                        <button onClick={() => removePart(issueIndex, partIndex)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F09595', padding: '4px', marginTop: '14px', flexShrink: 0 }}>
+                          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Description <span style={{ color: '#bbb' }}>(optional)</span></div>
+                      <input value={part.description}
+                        onChange={e => updatePart(issueIndex, partIndex, 'description', e.target.value)}
+                        placeholder="e.g. OEM replacement, local brand..."
+                        style={{ width: '100%', padding: '7px 10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', color: '#333' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <button onClick={() => addPart(issueIndex)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', border: '1px dashed #ddd', background: 'transparent', fontSize: '12px', color: '#185FA5', cursor: 'pointer' }}>
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  Add part
+                </button>
+              </div>
+            </div>
+
+            {/* Billing classification per issue */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
+                Billing classification <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                {billingOptions.map(b => (
+                  <button key={b.key}
+                    onClick={() => updateIssue(issueIndex, 'billingClassification', issue.billingClassification === b.key ? '' : b.key)}
+                    style={{
+                      padding: '8px 10px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
+                      borderColor: issue.billingClassification === b.key ? '#85B7EB' : '#eee',
+                      background: issue.billingClassification === b.key ? '#E6F1FB' : '#fff',
+                      color: issue.billingClassification === b.key ? '#0C447C' : '#333',
+                      fontSize: '11px', fontWeight: issue.billingClassification === b.key ? '500' : '400',
+                      cursor: 'pointer'
+                    }}>{b.label}</button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        ))}
+
+        {/* Add another issue */}
+        <button onClick={addIssue}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '11px', borderRadius: '8px', border: '1px dashed #85B7EB', background: '#f9f9f9', fontSize: '13px', color: '#185FA5', cursor: 'pointer', fontWeight: '500' }}>
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Add another issue
+        </button>
+
+        {/* Time spent — log level */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
-            Time spent on task <span style={{ color: '#aaa', fontWeight: '400' }}>(excluding travel)</span>
+            Total time spent <span style={{ color: '#aaa', fontWeight: '400' }}>(excluding travel)</span>
           </div>
           <select value={form.timeSpent} onChange={e => set('timeSpent', e.target.value)}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '13px', background: '#fff', outline: 'none', color: '#333' }}>
@@ -405,28 +519,7 @@ export default function AddLog({ facility }) {
           </select>
         </div>
 
-        {/* Billing classification */}
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
-            Billing classification <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-            {billingOptions.map(b => (
-              <button key={b.key}
-                onClick={() => set('billingClassification', form.billingClassification === b.key ? '' : b.key)}
-                style={{
-                  padding: '8px 10px', borderRadius: '8px', border: '1px solid', textAlign: 'left',
-                  borderColor: form.billingClassification === b.key ? '#85B7EB' : '#eee',
-                  background: form.billingClassification === b.key ? '#E6F1FB' : '#fff',
-                  color: form.billingClassification === b.key ? '#0C447C' : '#333',
-                  fontSize: '11px', fontWeight: form.billingClassification === b.key ? '500' : '400',
-                  cursor: 'pointer'
-                }}>{b.label}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* LPO number */}
+        {/* LPO number — log level */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             LPO / Invoice number <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
@@ -437,10 +530,13 @@ export default function AddLog({ facility }) {
           />
         </div>
 
-        {/* Status */}
+        {/* Overall status */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
-            Status <span style={{ color: '#E24B4A' }}>*</span>
+            Overall status <span style={{ color: '#E24B4A' }}>*</span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '8px' }}>
+            The overall outcome of this visit
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {statusOptions.map(s => (
@@ -595,7 +691,7 @@ export default function AddLog({ facility }) {
             Engineer comment <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
           </div>
           <textarea value={form.followUpNote} onChange={e => set('followUpNote', e.target.value)}
-            placeholder="Any observations or comments..."
+            placeholder="Any observations or comments about the visit..."
             rows={2}
             style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
           />

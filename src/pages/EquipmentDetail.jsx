@@ -99,6 +99,7 @@ export default function EquipmentDetail({ facility }) {
     const log = logs.find(l => l.id === selectedLog)
     if (!log) return null
     const tc = typeConfig[log.log_type] || typeConfig.other
+    const hasMultipleIssues = log.issues && log.issues.length > 1
 
     return (
       <div>
@@ -133,19 +134,126 @@ export default function EquipmentDetail({ facility }) {
             </div>
           </div>
 
-          {/* Service type and date */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
+          {/* Date and technician */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#888' }}>{log.technician_name}</span>
             <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
           </div>
 
-          {/* Key fields */}
+          {/* Overall status */}
+          {log.device_status && (
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Overall status</div>
+              <span style={{
+                fontSize: '11px', padding: '3px 10px', borderRadius: '99px',
+                background: log.device_status === 'successful' ? '#E1F5EE' : log.device_status === 'decommissioned' ? '#f5f5f5' : '#FAEEDA',
+                color: log.device_status === 'successful' ? '#085041' : log.device_status === 'decommissioned' ? '#444' : '#633806',
+                border: `1px solid ${log.device_status === 'successful' ? '#5DCAA5' : log.device_status === 'decommissioned' ? '#ddd' : '#EF9F27'}`
+              }}>
+                {statusLabels[log.device_status] || log.device_status}
+              </span>
+            </div>
+          )}
+
+          {/* Multiple issues breakdown */}
+          {hasMultipleIssues ? (
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
+                Issues ({log.issues.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {log.issues.map((issue, i) => {
+                  const itc = typeConfig[issue.log_type] || typeConfig.other
+                  return (
+                    <div key={i} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '10px', padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#185FA5' }}>Issue {i + 1}</span>
+                        <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: itc.bg, color: itc.color, border: `1px solid ${itc.border}` }}>{itc.label}</span>
+                        {issue.billing_classification && (
+                          <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
+                            {billingLabels[issue.billing_classification] || issue.billing_classification}
+                          </span>
+                        )}
+                      </div>
+                      {issue.what_happened && (
+                        <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}>
+                          <span style={{ color: '#888', fontSize: '11px' }}>What happened: </span>{issue.what_happened}
+                        </div>
+                      )}
+                      {issue.root_cause && (
+                        <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}>
+                          <span style={{ color: '#888', fontSize: '11px' }}>Root cause: </span>{issue.root_cause}
+                        </div>
+                      )}
+                      {issue.what_was_done && (
+                        <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}>
+                          <span style={{ color: '#888', fontSize: '11px' }}>What was done: </span>{issue.what_was_done}
+                        </div>
+                      )}
+                      {issue.parts_list && issue.parts_list.filter(p => p.name).length > 0 && (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                          {issue.parts_list.filter(p => p.name).map((p, pi) => (
+                            <span key={pi} style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB' }}>
+                              {p.quantity ? `${p.quantity}x ` : ''}{p.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            /* Single issue view */
+            <>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
+                {log.billing_classification && (
+                  <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
+                    {billingLabels[log.billing_classification] || log.billing_classification}
+                  </span>
+                )}
+              </div>
+
+              {[
+                { label: 'What was found', value: log.what_happened },
+                { label: 'Root cause', value: log.root_cause },
+                { label: 'What was done', value: log.what_was_done },
+              ].filter(s => s.value).map(section => (
+                <div key={section.label}>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{section.label}</div>
+                  <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#333', lineHeight: '1.6' }}>{section.value}</div>
+                </div>
+              ))}
+
+              {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Parts used</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    {log.parts_list.filter(p => p.name).map((part, i) => (
+                      <div key={i} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{part.name}</div>
+                          {part.description && <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{part.description}</div>}
+                        </div>
+                        {part.quantity && (
+                          <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB', flexShrink: 0 }}>
+                            qty: {part.quantity}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Key fields — log level */}
           <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
             {[
-              { label: 'Technician', value: log.technician_name || '—' },
-              { label: 'Status', value: statusLabels[log.device_status] || log.device_status || '—' },
-              { label: 'Time spent', value: log.time_spent || (log.labour_hours ? `${log.labour_hours} hrs` : '—') },
-              { label: 'Billing', value: billingLabels[log.billing_classification] || '—' },
+              { label: 'Time spent', value: log.time_spent || '—' },
               { label: 'LPO / Invoice', value: log.lpo_number || '—' },
             ].map(row => (
               <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
@@ -155,38 +263,13 @@ export default function EquipmentDetail({ facility }) {
             ))}
           </div>
 
-          {/* Parts used */}
-          {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
+          {/* Engineer comment */}
+          {log.follow_up_note && (
             <div>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Parts used</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                {log.parts_list.filter(p => p.name).map((part, i) => (
-                  <div key={i} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{part.name}</div>
-                      {part.description && <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{part.description}</div>}
-                    </div>
-                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB', flexShrink: 0 }}>
-                      qty: {part.quantity}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Engineer comment</div>
+              <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#333', lineHeight: '1.6' }}>{log.follow_up_note}</div>
             </div>
           )}
-
-          {/* Text sections */}
-          {[
-            { label: 'What was found', value: log.what_happened },
-            { label: 'Root cause', value: log.root_cause },
-            { label: 'What was done', value: log.what_was_done },
-            { label: 'Engineer comment', value: log.follow_up_note },
-          ].filter(s => s.value).map(section => (
-            <div key={section.label}>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{section.label}</div>
-              <div style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#333', lineHeight: '1.6' }}>{section.value}</div>
-            </div>
-          ))}
 
           {/* Follow-up reminder */}
           {log.follow_up_reminder_note && (
@@ -224,8 +307,7 @@ export default function EquipmentDetail({ facility }) {
           </svg>
           Back
         </button>
-        <button
-          onClick={() => navigate(`/equipment/${id}/edit`)}
+        <button onClick={() => navigate(`/equipment/${id}/edit`)}
           style={{ background: 'none', border: '1px solid #eee', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>
           Edit
         </button>
@@ -259,12 +341,12 @@ export default function EquipmentDetail({ facility }) {
             item.serial_number && { label: 'Serial number', value: item.serial_number },
             item.model_number && { label: 'Model', value: item.model_number },
             item.year_of_manufacture && { label: 'Year of manufacture', value: item.year_of_manufacture },
-            item.installation_date && { label: 'Installation date', value: new Date(item.installation_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) },
+            item.installation_date && { label: 'Installation date', value: new Date(item.installation_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) },
             item.warranty_expiry_date && {
               label: 'Warranty',
               value: warrantyStatus === 'expired'
-                ? `Expired ${new Date(item.warranty_expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                : `Valid until ${new Date(item.warranty_expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
+                ? `Expired ${new Date(item.warranty_expiry_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                : `Valid until ${new Date(item.warranty_expiry_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
               color: warrantyStatus === 'expired' ? '#A32D2D' : '#0F6E56'
             },
             { label: 'Added by', value: item.addedByName || 'Unknown' },
@@ -281,8 +363,8 @@ export default function EquipmentDetail({ facility }) {
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '9px 0 4px' }}>Maintenance</div>
           {[
             { label: 'PM interval', value: item.interval_days ? `Every ${item.interval_days} days` : 'Specific date' },
-            { label: 'Last PM done', value: item.last_pm_date ? new Date(item.last_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not yet done' },
-            { label: 'Next PM due', value: item.next_pm_date ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set', color: statusColor },
+            { label: 'Last PM done', value: item.last_pm_date ? new Date(item.last_pm_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not yet done' },
+            { label: 'Next PM due', value: item.next_pm_date ? new Date(item.next_pm_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set', color: statusColor },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f5f5f5' }}>
               <span style={{ fontSize: '12px', color: '#888' }}>{row.label}</span>
@@ -292,16 +374,18 @@ export default function EquipmentDetail({ facility }) {
         </div>
 
         {/* PM Instructions */}
-        <div style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '12px', padding: '12px 14px' }}>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#0C447C', marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <path d="M14 2v6h6M16 13H8M16 17H8"/>
-            </svg>
-            What to do during this PM
+        {item.pm_instructions && (
+          <div style={{ background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: '12px', padding: '12px 14px' }}>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#0C447C', marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <path d="M14 2v6h6M16 13H8M16 17H8"/>
+              </svg>
+              What to do during this PM
+            </div>
+            <div style={{ fontSize: '12px', color: '#185FA5', lineHeight: '1.6' }}>{item.pm_instructions}</div>
           </div>
-          <div style={{ fontSize: '12px', color: '#185FA5', lineHeight: '1.6' }}>{item.pm_instructions}</div>
-        </div>
+        )}
 
         {/* Service history */}
         <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
@@ -314,18 +398,49 @@ export default function EquipmentDetail({ facility }) {
 
         {logs.map(log => {
           const tc = typeConfig[log.log_type] || typeConfig.other
+          const hasMultipleIssues = log.issues && log.issues.length > 1
+
           return (
             <div key={log.id}
               onClick={() => setSelectedLog(log.id)}
               style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '10px 12px', cursor: 'pointer', display: 'flex', gap: '10px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>{log.what_happened}</div>
-                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
+
+                {/* What happened summary */}
+                <div style={{ fontSize: '12px', fontWeight: '500', color: '#333', marginBottom: '4px' }}>
+                  {hasMultipleIssues
+                    ? `${log.issues.length} issues addressed`
+                    : log.what_happened}
                 </div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{log.what_was_done}</div>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+
+                {/* Issue type badges */}
+                {hasMultipleIssues ? (
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                    {log.issues.map((issue, i) => {
+                      const itc = typeConfig[issue.log_type] || typeConfig.other
+                      return (
+                        <span key={i} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: itc.bg, color: itc.color, border: `1px solid ${itc.border}` }}>
+                          {i + 1}. {itc.label}
+                        </span>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: '4px' }}>
+                    <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>
+                      {tc.label}
+                    </span>
+                  </div>
+                )}
+
+                {/* What was done */}
+                {!hasMultipleIssues && (
+                  <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{log.what_was_done}</div>
+                )}
+
+                {/* Status and follow-up */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {log.device_status && (
                     <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
                       {statusLabels[log.device_status] || log.device_status}
@@ -336,12 +451,8 @@ export default function EquipmentDetail({ facility }) {
                       Follow-up set
                     </span>
                   )}
-                  {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && log.parts_list.filter(p => p.name).map((p, i) => (
-                    <span key={i} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#E6F1FB', color: '#0C447C', border: '1px solid #85B7EB' }}>
-                      {p.quantity}x {p.name}
-                    </span>
-                  ))}
                 </div>
+
                 <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>{log.technician_name}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>

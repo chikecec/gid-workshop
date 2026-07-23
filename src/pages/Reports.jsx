@@ -47,15 +47,8 @@ const billingLabels = {
 }
 
 const equipmentTypes = [
-  'Respiratory support',
-  'Monitoring',
-  'Sterilisation',
-  'Cardiology',
-  'Diagnostic',
-  'Laboratory',
-  'Surgical',
-  'Imaging',
-  'Other',
+  'Respiratory support', 'Monitoring', 'Sterilisation', 'Cardiology',
+  'Diagnostic', 'Laboratory', 'Surgical', 'Imaging', 'Other',
 ]
 
 export default function Reports({ facility }) {
@@ -65,6 +58,10 @@ export default function Reports({ facility }) {
   const [generated, setGenerated] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [showFilterPanel, setShowFilterPanel] = useState(false)
+  const [savedReports, setSavedReports] = useState([])
+  const [savedReportsLoading, setSavedReportsLoading] = useState(true)
+  const [loadingReportId, setLoadingReportId] = useState(null)
+  const [activeReportId, setActiveReportId] = useState(null)
   const [filter, setFilter] = useState({
     rangeType: 'this-week',
     startDate: getWeekRange(0).start,
@@ -96,9 +93,21 @@ export default function Reports({ facility }) {
         .select('*, profiles(id, full_name, email)')
         .eq('facility_id', facility.id)
       if (memberData) setMembers(memberData)
+      loadSavedReports()
     }
     load()
   }, [facility])
+
+  const loadSavedReports = async () => {
+    setSavedReportsLoading(true)
+    const { data } = await supabase
+      .from('reports')
+      .select('*')
+      .eq('facility_id', facility.id)
+      .order('created_at', { ascending: false })
+    if (data) setSavedReports(data)
+    setSavedReportsLoading(false)
+  }
 
   const handleRangeType = (type) => {
     if (type === 'this-week') {
@@ -111,12 +120,14 @@ export default function Reports({ facility }) {
       setFilter(f => ({ ...f, rangeType: type }))
     }
     setGenerated(false)
+    setActiveReportId(null)
   }
 
-  const generateReport = async () => {
+  const generateReport = async (saveToHistory = true) => {
     if (!facility) return
     setLoading(true)
     setGenerated(false)
+    setActiveReportId(null)
 
     let query = supabase
       .from('repair_logs')
@@ -142,13 +153,9 @@ export default function Reports({ facility }) {
     const { data } = await query
     if (data) {
       let filtered = data
-
-      // Filter by equipment type
       if (reportFilters.equipmentTypes.length) {
         filtered = filtered.filter(log => reportFilters.equipmentTypes.includes(log.equipment?.type))
       }
-
-      // Filter by device name, model, or serial number
       if (reportFilters.deviceSearch.trim()) {
         const q = reportFilters.deviceSearch.toLowerCase()
         filtered = filtered.filter(log =>
@@ -157,11 +164,94 @@ export default function Reports({ facility }) {
           log.equipment?.serial_number?.toLowerCase().includes(q)
         )
       }
-
       setLogs(filtered)
+
+      // Save to history
+      if (saveToHistory && filtered.length > 0) {
+        const totalHours = filtered.reduce((sum, log) => {
+          if (!log.time_spent) return sum
+          const match = log.time_spent.match(/[\d.]+/)
+          return sum + (match ? parseFloat(match[0]) : 0)
+        }, 0)
+
+        const techName = filter.technicianId === 'all'
+          ? 'All Technicians'
+          : members.find(m => m.profiles?.id === filter.technicianId)?.profiles?.full_name || 'Technician'
+
+        const { data: savedReport } = await supabase
+          .from('reports')
+          .insert({
+            facility_id: facility.id,
+            created_by: currentUser.id,
+            date_from: filter.startDate,
+            date_to: filter.endDate,
+            technician_id: filter.technicianId,
+            technician_name: techName,
+            filter_service_types: reportFilters.serviceTypes,
+            filter_statuses: reportFilters.statuses,
+            filter_billing_types: reportFilters.billingTypes,
+            filter_equipment_types: reportFilters.equipmentTypes,
+            device_search: reportFilters.deviceSearch || null,
+            log_ids: filtered.map(l => l.id),
+            log_count: filtered.length,
+            total_hours: totalHours,
+          })
+          .select()
+          .single()
+
+        if (savedReport) {
+          setActiveReportId(savedReport.id)
+          loadSavedReports()
+        }
+      }
     }
     setLoading(false)
     setGenerated(true)
+  }
+
+  const loadSavedReport = async (report) => {
+    setLoadingReportId(report.id)
+    setGenerated(false)
+
+    // Restore filters
+    setFilter({
+      rangeType: 'custom',
+      startDate: report.date_from,
+      endDate: report.date_to,
+      technicianId: report.technician_id,
+    })
+    setReportFilters({
+      deviceSearch: report.device_search || '',
+      serviceTypes: report.filter_service_types || [],
+      statuses: report.filter_statuses || [],
+      billingTypes: report.filter_billing_types || [],
+      equipmentTypes: report.filter_equipment_types || [],
+    })
+
+    // Load the specific logs by ID
+    const { data } = await supabase
+      .from('repair_logs')
+      .select('*, equipment(name, location, room_number, next_pm_date, model_number, serial_number, type)')
+      .in('id', report.log_ids)
+      .order('created_at', { ascending: true })
+
+    if (data) setLogs(data)
+    setActiveReportId(report.id)
+    setLoadingReportId(null)
+    setGenerated(true)
+  }
+
+  const deleteReport = async (reportId, e) => {
+    e.stopPropagation()
+    const confirmed = window.confirm('Delete this saved report?')
+    if (!confirmed) return
+    await supabase.from('reports').delete().eq('id', reportId)
+    if (activeReportId === reportId) {
+      setGenerated(false)
+      setActiveReportId(null)
+      setLogs([])
+    }
+    loadSavedReports()
   }
 
   const handlePrint = () => window.print()
@@ -188,7 +278,7 @@ export default function Reports({ facility }) {
     ? 'All Technicians'
     : members.find(m => m.profiles?.id === filter.technicianId)?.profiles?.full_name || 'Technician'
 
-  const dateRangeLabel = `${new Date(filter.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – ${new Date(filter.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+  const dateRangeLabel = `${new Date(filter.startDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – ${new Date(filter.endDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
 
   const activeFilterCount =
     (reportFilters.deviceSearch ? 1 : 0) +
@@ -200,9 +290,7 @@ export default function Reports({ facility }) {
   const togglePending = (key, value) => {
     setPendingReportFilters(f => ({
       ...f,
-      [key]: f[key].includes(value)
-        ? f[key].filter(v => v !== value)
-        : [...f[key], value]
+      [key]: f[key].includes(value) ? f[key].filter(v => v !== value) : [...f[key], value]
     }))
   }
 
@@ -210,6 +298,7 @@ export default function Reports({ facility }) {
     setReportFilters({ ...pendingReportFilters })
     setShowFilterPanel(false)
     setGenerated(false)
+    setActiveReportId(null)
   }
 
   const clearReportFilters = () => {
@@ -218,20 +307,27 @@ export default function Reports({ facility }) {
     setPendingReportFilters(empty)
     setShowFilterPanel(false)
     setGenerated(false)
+    setActiveReportId(null)
   }
 
   const chipStyle = (active) => ({
-    padding: '5px 12px',
-    borderRadius: '99px',
-    border: '1px solid',
+    padding: '5px 12px', borderRadius: '99px', border: '1px solid',
     borderColor: active ? '#85B7EB' : '#eee',
     background: active ? '#E6F1FB' : '#fff',
     color: active ? '#0C447C' : '#666',
-    fontSize: '12px',
-    fontWeight: active ? '500' : '400',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
+    fontSize: '12px', fontWeight: active ? '500' : '400',
+    cursor: 'pointer', whiteSpace: 'nowrap',
   })
+
+  const groupByMonth = (reports) => {
+    const groups = {}
+    reports.forEach(r => {
+      const month = new Date(r.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+      if (!groups[month]) groups[month] = []
+      groups[month].push(r)
+    })
+    return groups
+  }
 
   return (
     <div>
@@ -257,9 +353,7 @@ export default function Reports({ facility }) {
           </svg>
           Filter
           {activeFilterCount > 0 && (
-            <span style={{ background: '#185FA5', color: '#fff', borderRadius: '99px', fontSize: '10px', padding: '1px 6px', fontWeight: '600' }}>
-              {activeFilterCount}
-            </span>
+            <span style={{ background: '#185FA5', color: '#fff', borderRadius: '99px', fontSize: '10px', padding: '1px 6px', fontWeight: '600' }}>{activeFilterCount}</span>
           )}
         </button>
       </div>
@@ -275,8 +369,7 @@ export default function Reports({ facility }) {
               { key: 'last-week', label: 'Last week' },
               { key: 'custom', label: 'Custom' },
             ].map(r => (
-              <button key={r.key}
-                onClick={() => handleRangeType(r.key)}
+              <button key={r.key} onClick={() => handleRangeType(r.key)}
                 style={{
                   flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid',
                   borderColor: filter.rangeType === r.key ? '#85B7EB' : '#eee',
@@ -320,8 +413,7 @@ export default function Reports({ facility }) {
               { key: 'all', label: 'All technicians' },
               { key: currentUser?.id, label: 'My work only' },
             ].map(o => (
-              <button key={o.key}
-                onClick={() => setFilter(f => ({ ...f, technicianId: o.key }))}
+              <button key={o.key} onClick={() => setFilter(f => ({ ...f, technicianId: o.key }))}
                 style={{
                   flex: 1, padding: '7px 14px', borderRadius: '8px', border: '1px solid',
                   borderColor: filter.technicianId === o.key ? '#85B7EB' : '#eee',
@@ -350,7 +442,7 @@ export default function Reports({ facility }) {
           </div>
         )}
 
-        <button onClick={generateReport} disabled={loading}
+        <button onClick={() => generateReport(true)} disabled={loading}
           style={{ width: '100%', padding: '12px', borderRadius: '8px', border: 'none', background: loading ? '#ccc' : '#185FA5', fontSize: '14px', fontWeight: '500', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer' }}>
           {loading ? 'Generating...' : 'Generate Report'}
         </button>
@@ -370,6 +462,67 @@ export default function Reports({ facility }) {
             Download / Print Report
           </button>
         )}
+
+        {/* Saved reports */}
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
+            Saved reports
+          </div>
+
+          {savedReportsLoading && (
+            <div style={{ textAlign: 'center', padding: '16px', color: '#aaa', fontSize: '12px' }}>Loading...</div>
+          )}
+
+          {!savedReportsLoading && savedReports.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '16px', color: '#aaa', fontSize: '12px' }}>
+              No saved reports yet — generate your first report above
+            </div>
+          )}
+
+          {!savedReportsLoading && Object.entries(groupByMonth(savedReports)).map(([month, monthReports]) => (
+            <div key={month} style={{ marginBottom: '12px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '500', color: '#bbb', marginBottom: '6px' }}>{month}</div>
+              {monthReports.map(report => (
+                <div key={report.id}
+                  onClick={() => loadSavedReport(report)}
+                  style={{
+                    background: activeReportId === report.id ? '#E6F1FB' : '#fff',
+                    border: `1px solid ${activeReportId === report.id ? '#85B7EB' : '#eee'}`,
+                    borderRadius: '10px', padding: '10px 12px', marginBottom: '6px',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px'
+                  }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '12px', fontWeight: '500', color: activeReportId === report.id ? '#0C447C' : '#333' }}>
+                      {new Date(report.date_from + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – {new Date(report.date_to + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                      {report.technician_name} · {report.log_count} job{report.log_count !== 1 ? 's' : ''} · {report.total_hours?.toFixed(1)}h
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#bbb', marginTop: '1px' }}>
+                      Generated {new Date(report.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </div>
+                  </div>
+                  {loadingReportId === report.id ? (
+                    <div style={{ fontSize: '11px', color: '#888' }}>Loading...</div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {activeReportId === report.id && (
+                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#185FA5', color: '#fff' }}>Viewing</span>
+                      )}
+                      <button
+                        onClick={(e) => deleteReport(report.id, e)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F09595', padding: '2px' }}>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Printable report */}
@@ -450,14 +603,10 @@ export default function Reports({ facility }) {
                     {(log.equipment?.model_number || log.equipment?.serial_number) && (
                       <div style={{ display: 'flex', gap: '12px', marginTop: '3px' }}>
                         {log.equipment?.model_number && (
-                          <div style={{ fontSize: '11px', color: '#888' }}>
-                            Model: <span style={{ fontWeight: '500', color: '#333' }}>{log.equipment.model_number}</span>
-                          </div>
+                          <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#333' }}>{log.equipment.model_number}</span></div>
                         )}
                         {log.equipment?.serial_number && (
-                          <div style={{ fontSize: '11px', color: '#888' }}>
-                            S/N: <span style={{ fontWeight: '500', color: '#333' }}>{log.equipment.serial_number}</span>
-                          </div>
+                          <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#333' }}>{log.equipment.serial_number}</span></div>
                         )}
                       </div>
                     )}
@@ -480,7 +629,7 @@ export default function Reports({ facility }) {
                       { label: 'LPO / Invoice No.', value: log.lpo_number || '—' },
                       { label: 'Client', value: facility?.name || '—' },
                       { label: 'Engineer', value: log.technician_name || '—' },
-                      log.equipment?.next_pm_date && { label: 'Next PM due', value: new Date(log.equipment.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) },
+                      log.equipment?.next_pm_date && { label: 'Next PM due', value: new Date(log.equipment.next_pm_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) },
                     ].filter(Boolean).map(row => (
                       <div key={row.label} style={{ fontSize: '11px', padding: '5px 8px', background: '#fafafa', borderRadius: '6px' }}>
                         <div style={{ color: '#888', marginBottom: '1px' }}>{row.label}</div>
@@ -517,7 +666,7 @@ export default function Reports({ facility }) {
                         {log.parts_list.filter(p => p.name).map((p, i) => (
                           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#fafafa', borderRadius: '6px' }}>
                             <span>{p.name}{p.description ? ` — ${p.description}` : ''}</span>
-                            <span style={{ fontWeight: '500', color: '#185FA5' }}>qty: {p.quantity}</span>
+                            {p.quantity && <span style={{ fontWeight: '500', color: '#185FA5' }}>qty: {p.quantity}</span>}
                           </div>
                         ))}
                       </div>
@@ -547,98 +696,72 @@ export default function Reports({ facility }) {
         <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
           <div onClick={() => setShowFilterPanel(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />
           <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '430px', background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 16px', paddingBottom: '40px', maxHeight: '85vh', overflowY: 'auto' }}>
-
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <div style={{ fontSize: '15px', fontWeight: '500' }}>Filter report</div>
               <button onClick={() => setShowFilterPanel(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa' }}>
-                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
 
-            {/* Device search */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Device</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f5f5f5', borderRadius: '8px', padding: '8px 12px' }}>
                 <svg width="14" height="14" fill="none" stroke="#aaa" strokeWidth="2" viewBox="0 0 24 24">
                   <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input
-                  value={pendingReportFilters.deviceSearch}
+                <input value={pendingReportFilters.deviceSearch}
                   onChange={e => setPendingReportFilters(f => ({ ...f, deviceSearch: e.target.value }))}
                   placeholder="Search by name, model or serial number..."
                   style={{ flex: 1, border: 'none', background: 'transparent', fontSize: '12px', outline: 'none', color: '#333' }}
                 />
                 {pendingReportFilters.deviceSearch && (
                   <button onClick={() => setPendingReportFilters(f => ({ ...f, deviceSearch: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', padding: '0' }}>
-                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M18 6L6 18M6 6l12 12"/>
-                    </svg>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Equipment type */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Equipment type</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {equipmentTypes.map(t => (
-                  <button key={t} onClick={() => togglePending('equipmentTypes', t)} style={chipStyle(pendingReportFilters.equipmentTypes.includes(t))}>
-                    {t}
-                  </button>
+                  <button key={t} onClick={() => togglePending('equipmentTypes', t)} style={chipStyle(pendingReportFilters.equipmentTypes.includes(t))}>{t}</button>
                 ))}
               </div>
             </div>
 
-            {/* Service type */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Service type</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {Object.entries(serviceLabels).map(([key, label]) => (
-                  <button key={key} onClick={() => togglePending('serviceTypes', key)} style={chipStyle(pendingReportFilters.serviceTypes.includes(key))}>
-                    {label}
-                  </button>
+                  <button key={key} onClick={() => togglePending('serviceTypes', key)} style={chipStyle(pendingReportFilters.serviceTypes.includes(key))}>{label}</button>
                 ))}
               </div>
             </div>
 
-            {/* Status */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Status</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {Object.entries(statusLabels).map(([key, label]) => (
-                  <button key={key} onClick={() => togglePending('statuses', key)} style={chipStyle(pendingReportFilters.statuses.includes(key))}>
-                    {label}
-                  </button>
+                  <button key={key} onClick={() => togglePending('statuses', key)} style={chipStyle(pendingReportFilters.statuses.includes(key))}>{label}</button>
                 ))}
               </div>
             </div>
 
-            {/* Billing classification */}
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Billing classification</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {Object.entries(billingLabels).map(([key, label]) => (
-                  <button key={key} onClick={() => togglePending('billingTypes', key)} style={chipStyle(pendingReportFilters.billingTypes.includes(key))}>
-                    {label}
-                  </button>
+                  <button key={key} onClick={() => togglePending('billingTypes', key)} style={chipStyle(pendingReportFilters.billingTypes.includes(key))}>{label}</button>
                 ))}
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={clearReportFilters}
-                style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
-                Clear all
-              </button>
-              <button onClick={applyReportFilters}
-                style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: '#185FA5', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: 'pointer' }}>
-                Apply filters
-              </button>
+              <button onClick={clearReportFilters} style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>Clear all</button>
+              <button onClick={applyReportFilters} style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: '#185FA5', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: 'pointer' }}>Apply filters</button>
             </div>
-
           </div>
         </div>
       )}

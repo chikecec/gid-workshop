@@ -109,3 +109,30 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Force dark text on all inputs regardless of browser/OS theme */
+input,
+textarea,
+select {
+  color: #333 !important;
+  background-color: #fff !important;
+  -webkit-text-fill-color: #333 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #aaa !important;
+  -webkit-text-fill-color: #aaa !important;
+  opacity: 1 !important;
+}
+
+/* Dark mode override — keep inputs light since our app uses white cards */
+@media (prefers-color-scheme: dark) {
+  input,
+  textarea,
+  select {
+    color: #333 !important;
+    background-color: #fff !important;
+    -webkit-text-fill-color: #333 !important;
+  }
+}

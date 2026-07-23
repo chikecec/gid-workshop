@@ -406,29 +406,16 @@ export default function EquipmentDetail({ facility }) {
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
               <div style={{ flex: 1 }}>
 
-                {/* What happened */}
-                <div style={{ fontSize: '12px', fontWeight: '500', color: '#333', marginBottom: '4px' }}>
-                  {hasMultipleIssues
-                    ? `${log.issues.length} issues addressed`
-                    : log.what_happened}
+                {/* What happened / issues summary */}
+                <div style={{ fontSize: '12px', fontWeight: '500', color: '#333', marginBottom: '2px' }}>
+                  {hasMultipleIssues ? `${log.issues.length} issues addressed` : log.what_happened}
                 </div>
 
-                {/* Service type bubbles — one per issue */}
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                  {hasMultipleIssues ? (
-                    log.issues.map((issue, i) => {
-                      const itc = typeConfig[issue.log_type] || typeConfig.other
-                      return (
-                        <span key={i} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: itc.bg, color: itc.color, border: `1px solid ${itc.border}` }}>
-                          Issue {i + 1}: {itc.label}
-                        </span>
-                      )
-                    })
-                  ) : (
-                    <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>
-                      {tc.label}
-                    </span>
-                  )}
+                {/* Service type as plain text */}
+                <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>
+                  {hasMultipleIssues
+                    ? log.issues.map(i => (typeConfig[i.log_type] || typeConfig.other).label).join(' · ')
+                    : tc.label}
                 </div>
 
                 {/* What was done — single issue only */}
@@ -436,7 +423,7 @@ export default function EquipmentDetail({ facility }) {
                   <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{log.what_was_done}</div>
                 )}
 
-                {/* Status and follow-up */}
+                {/* Status bubble + follow-up only */}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {log.device_status && (
                     <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>

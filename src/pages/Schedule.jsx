@@ -4,9 +4,10 @@ import { supabase } from '../supabase'
 
 function getStatus(item) {
   if (!item.next_pm_date) return 'upcoming'
-  const today = new Date()
-  const next = new Date(item.next_pm_date)
-  const diffDays = Math.ceil((next - today) / (1000 * 60 * 60 * 24))
+  const nextDate = new Date(item.next_pm_date.split('T')[0] + 'T00:00:00')
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((nextDate - todayDate) / (1000 * 60 * 60 * 24))
   if (diffDays < 0) return 'overdue'
   if (diffDays <= 30) return 'due-soon'
   return 'upcoming'
@@ -14,9 +15,10 @@ function getStatus(item) {
 
 function getDaysUntil(dateStr) {
   if (!dateStr) return null
-  const today = new Date()
-  const next = new Date(dateStr)
-  return Math.ceil((next - today) / (1000 * 60 * 60 * 24))
+  const nextDate = new Date(dateStr.split('T')[0] + 'T00:00:00')
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
+  return Math.round((nextDate - todayDate) / (1000 * 60 * 60 * 24))
 }
 
 const dayLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
@@ -52,18 +54,20 @@ export default function Schedule({ facility }) {
   for (let i = 0; i < offset; i++) cells.push(null)
   for (let d = 1; d <= daysInMonth; d++) cells.push(d)
 
-  const today = new Date()
-  const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
+  const isCurrentMonth = todayDate.getMonth() === month && todayDate.getFullYear() === year
 
   const pmDaysInMonth = equipment
     .filter(e => e.next_pm_date)
     .reduce((acc, e) => {
-      const d = new Date(e.next_pm_date)
+      const d = new Date(e.next_pm_date.split('T')[0] + 'T00:00:00')
       if (d.getMonth() === month && d.getFullYear() === year) {
         const day = d.getDate()
         if (!acc[day]) acc[day] = { day, status: e.status, items: [] }
         acc[day].items.push(e)
         if (e.status === 'overdue') acc[day].status = 'overdue'
+        else if (e.status === 'due-soon' && acc[day].status !== 'overdue') acc[day].status = 'due-soon'
       }
       return acc
     }, {})
@@ -84,6 +88,12 @@ export default function Schedule({ facility }) {
     d.setMonth(d.getMonth() + 1)
     setCurrentDate(d)
     setSelectedDay(null)
+  }
+
+  const dotColor = (status) => {
+    if (status === 'overdue') return '#E24B4A'
+    if (status === 'due-soon') return '#EF9F27'
+    return '#185FA5'
   }
 
   return (
@@ -107,7 +117,7 @@ export default function Schedule({ facility }) {
         </div>
       </div>
 
-      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '14px', paddingBottom: '100px' }}>
 
         <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
@@ -118,7 +128,7 @@ export default function Schedule({ facility }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
             {cells.map((day, i) => {
               if (!day) return <div key={i} />
-              const isToday = isCurrentMonth && day === today.getDate()
+              const isToday = isCurrentMonth && day === todayDate.getDate()
               const pmDay = pmDaysInMonth[day]
               const isSelected = selectedDay === day
               return (
@@ -139,7 +149,7 @@ export default function Schedule({ facility }) {
                   {pmDay && !isToday && (
                     <div style={{
                       width: '4px', height: '4px', borderRadius: '50%',
-                      background: pmDay.status === 'overdue' ? '#E24B4A' : '#EF9F27',
+                      background: dotColor(pmDay.status),
                       position: 'absolute', bottom: '3px'
                     }}/>
                   )}
@@ -157,7 +167,7 @@ export default function Schedule({ facility }) {
                 <div key={item.id}
                   onClick={() => navigate(`/equipment/${item.id}`)}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: '1px solid #f5f5f5', cursor: 'pointer' }}>
-                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: item.status === 'overdue' ? '#E24B4A' : '#EF9F27', flexShrink: 0 }}/>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: dotColor(item.status), flexShrink: 0 }}/>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '12px', fontWeight: '500' }}>{item.name}</div>
                     <div style={{ fontSize: '11px', color: '#888' }}>{item.location}</div>
@@ -173,7 +183,7 @@ export default function Schedule({ facility }) {
           <div style={{ display: 'flex', gap: '14px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
             {[
               { color: '#E24B4A', label: 'Overdue' },
-              { color: '#EF9F27', label: 'Upcoming PM' },
+              { color: '#EF9F27', label: 'Due soon' },
               { color: '#185FA5', label: 'Today' },
             ].map(l => (
               <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -197,22 +207,36 @@ export default function Schedule({ facility }) {
 
         {overdue.length > 0 && (
           <>
-            <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Needs attention now</div>
+            <div style={{ fontSize: '11px', fontWeight: '600', color: '#A32D2D', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#E24B4A' }}/>
+              Overdue — {overdue.length} device{overdue.length > 1 ? 's' : ''}
+            </div>
             {overdue.map(item => (
               <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
-                style={{ background: '#fff', border: '1px solid #F09595', borderRadius: '12px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#FCEBEB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <svg width="18" height="18" fill="none" stroke="#A32D2D" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
-                  </svg>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-                  <div style={{ fontSize: '11px', color: '#A32D2D', marginTop: '1px' }}>
-                    Overdue by {Math.abs(getDaysUntil(item.next_pm_date))} days · {item.location}
+                style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#791F1F' }}>{item.name}</div>
+                    <div style={{ fontSize: '11px', color: '#A32D2D', opacity: 0.8, marginTop: '2px' }}>
+                      {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
+                    </div>
+                    {(item.model_number || item.serial_number) && (
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
+                        {item.model_number && <div style={{ fontSize: '11px', color: '#A32D2D', opacity: 0.7 }}>Model: <span style={{ fontWeight: '500' }}>{item.model_number}</span></div>}
+                        {item.serial_number && <div style={{ fontSize: '11px', color: '#A32D2D', opacity: 0.7 }}>S/N: <span style={{ fontWeight: '500' }}>{item.serial_number}</span></div>}
+                      </div>
+                    )}
                   </div>
+                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#A32D2D', border: '1px solid #F09595', flexShrink: 0 }}>
+                    {Math.abs(getDaysUntil(item.next_pm_date))} days overdue
+                  </span>
                 </div>
-                <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#FCEBEB', color: '#A32D2D', border: '1px solid #F09595', flexShrink: 0 }}>Overdue</span>
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #F09595', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#A32D2D', opacity: 0.8 }}>
+                    Was due {new Date(item.next_pm_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#A32D2D' }}>View & mark done →</div>
+                </div>
               </div>
             ))}
           </>
@@ -220,57 +244,75 @@ export default function Schedule({ facility }) {
 
         {dueSoon.length > 0 && (
           <>
-            <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Due soon</div>
-            {dueSoon.map(item => {
-              const d = getDaysUntil(item.next_pm_date)
-              return (
-                <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
-                  style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#FAEEDA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg width="18" height="18" fill="none" stroke="#854F0B" strokeWidth="1.8" viewBox="0 0 24 24">
-                      <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
-                    </svg>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-                    <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>
-                      Due {new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · {item.location}
+            <div style={{ fontSize: '11px', fontWeight: '600', color: '#854F0B', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF9F27' }}/>
+              Due soon — {dueSoon.length} device{dueSoon.length > 1 ? 's' : ''}
+            </div>
+            {dueSoon.map(item => (
+              <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
+                style={{ background: '#FEF9EC', border: '1px solid #F5C842', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#7A5C00' }}>{item.name}</div>
+                    <div style={{ fontSize: '11px', color: '#9A7300', opacity: 0.8, marginTop: '2px' }}>
+                      {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
                     </div>
+                    {(item.model_number || item.serial_number) && (
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
+                        {item.model_number && <div style={{ fontSize: '11px', color: '#9A7300', opacity: 0.7 }}>Model: <span style={{ fontWeight: '500' }}>{item.model_number}</span></div>}
+                        {item.serial_number && <div style={{ fontSize: '11px', color: '#9A7300', opacity: 0.7 }}>S/N: <span style={{ fontWeight: '500' }}>{item.serial_number}</span></div>}
+                      </div>
+                    )}
                   </div>
-                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#FAEEDA', color: '#854F0B', border: '1px solid #EF9F27', flexShrink: 0 }}>
-                    {d}d
+                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#9A7300', border: '1px solid #F5C842', flexShrink: 0 }}>
+                    {getDaysUntil(item.next_pm_date)}d away
                   </span>
                 </div>
-              )
-            })}
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #F5C842', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#9A7300', opacity: 0.8 }}>
+                    Next PM: {new Date(item.next_pm_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#7A5C00' }}>View instructions →</div>
+                </div>
+              </div>
+            ))}
           </>
         )}
 
         {upcoming.length > 0 && (
           <>
-            <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Upcoming</div>
-            {upcoming.map(item => {
-              const d = getDaysUntil(item.next_pm_date)
-              return (
-                <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
-                  style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg width="18" height="18" fill="none" stroke="#185FA5" strokeWidth="1.8" viewBox="0 0 24 24">
-                      <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
-                    </svg>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-                    <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>
-                      Due {item.next_pm_date ? new Date(item.next_pm_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'} · {item.location}
+            <div style={{ fontSize: '11px', fontWeight: '600', color: '#185FA5', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#185FA5' }}/>
+              Upcoming — {upcoming.length} device{upcoming.length > 1 ? 's' : ''}
+            </div>
+            {upcoming.map(item => (
+              <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
+                style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#333' }}>{item.name}</div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                      {item.location}{item.room_number ? ` · ${item.room_number}` : ''}
                     </div>
+                    {(item.model_number || item.serial_number) && (
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
+                        {item.model_number && <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{item.model_number}</span></div>}
+                        {item.serial_number && <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{item.serial_number}</span></div>}
+                      </div>
+                    )}
                   </div>
                   <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#E6F1FB', color: '#185FA5', border: '1px solid #85B7EB', flexShrink: 0 }}>
-                    {d ? `${d}d` : '—'}
+                    {getDaysUntil(item.next_pm_date)}d away
                   </span>
                 </div>
-              )
-            })}
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#888' }}>
+                    Next PM: {new Date(item.next_pm_date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5' }}>View →</div>
+                </div>
+              </div>
+            ))}
           </>
         )}
 

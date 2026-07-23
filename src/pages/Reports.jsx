@@ -533,24 +533,11 @@ export default function Reports({ facility }) {
             </div>
           </div>
 
-          {/* Summary stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+          {/* Single unified summary row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '20px' }}>
             {[
               { label: 'Total jobs', value: logs.length, color: '#185FA5', bg: '#E6F1FB' },
               { label: 'Total hours', value: `${totalHours.toFixed(1)}h`, color: '#085041', bg: '#E1F5EE' },
-              { label: 'Successful', value: logs.filter(l => l.device_status === 'successful').length, color: '#085041', bg: '#E1F5EE' },
-              { label: 'Pending', value: logs.filter(l => l.device_status !== 'successful' && l.device_status !== 'decommissioned').length, color: '#854F0B', bg: '#FAEEDA' },
-            ].map(s => (
-              <div key={s.label} style={{ background: s.bg, borderRadius: '8px', padding: '10px 8px', textAlign: 'center' }}>
-                <div style={{ fontSize: '18px', fontWeight: '600', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '10px', color: s.color, marginTop: '2px', opacity: 0.8 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Outcome breakdown */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-            {[
               { label: 'Successful', value: logs.filter(l => l.device_status === 'successful').length, color: '#085041', bg: '#E1F5EE' },
               { label: 'Pending', value: logs.filter(l => l.device_status !== 'successful' && l.device_status !== 'decommissioned').length, color: '#854F0B', bg: '#FAEEDA' },
               { label: 'Decommissioned', value: logs.filter(l => l.device_status === 'decommissioned').length, color: '#444', bg: '#f5f5f5' },
@@ -616,39 +603,64 @@ export default function Reports({ facility }) {
                     ))}
                   </div>
 
-                  {log.what_happened && (
-                    <div style={{ fontSize: '11px' }}>
-                      <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>What happened / Task</div>
-                      <div style={{ color: '#333', lineHeight: '1.5', padding: '6px 8px', background: '#fafafa', borderRadius: '6px' }}>{log.what_happened}</div>
-                    </div>
-                  )}
-
-                  {log.root_cause && (
-                    <div style={{ fontSize: '11px' }}>
-                      <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>Root cause</div>
-                      <div style={{ color: '#333', lineHeight: '1.5', padding: '6px 8px', background: '#fafafa', borderRadius: '6px' }}>{log.root_cause}</div>
-                    </div>
-                  )}
-
-                  {log.what_was_done && (
-                    <div style={{ fontSize: '11px' }}>
-                      <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>What was done</div>
-                      <div style={{ color: '#333', lineHeight: '1.5', padding: '6px 8px', background: '#fafafa', borderRadius: '6px' }}>{log.what_was_done}</div>
-                    </div>
-                  )}
-
-                  {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
-                    <div style={{ fontSize: '11px' }}>
-                      <div style={{ color: '#888', marginBottom: '4px', fontWeight: '500' }}>Parts used</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        {log.parts_list.filter(p => p.name).map((p, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#fafafa', borderRadius: '6px' }}>
-                            <span>{p.name}{p.description ? ` — ${p.description}` : ''}</span>
-                            {p.quantity && <span style={{ fontWeight: '500', color: '#185FA5' }}>qty: {p.quantity}</span>}
+                  {/* Multiple issues in report */}
+                  {log.issues && log.issues.length > 1 ? (
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#888', fontWeight: '500', marginBottom: '6px' }}>Issues addressed</div>
+                      {log.issues.map((issue, i) => (
+                        <div key={i} style={{ background: '#fafafa', borderRadius: '6px', padding: '8px', marginBottom: '4px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>
+                            Issue {i + 1} — {serviceLabels[issue.log_type] || issue.log_type}
+                            {issue.billing_classification && <span style={{ fontWeight: '400', color: '#888' }}> · {billingLabels[issue.billing_classification]}</span>}
                           </div>
-                        ))}
-                      </div>
+                          {issue.what_happened && <div style={{ fontSize: '11px', color: '#333', marginBottom: '2px' }}><span style={{ color: '#888' }}>Found: </span>{issue.what_happened}</div>}
+                          {issue.root_cause && <div style={{ fontSize: '11px', color: '#333', marginBottom: '2px' }}><span style={{ color: '#888' }}>Cause: </span>{issue.root_cause}</div>}
+                          {issue.what_was_done && <div style={{ fontSize: '11px', color: '#333', marginBottom: '2px' }}><span style={{ color: '#888' }}>Done: </span>{issue.what_was_done}</div>}
+                          {issue.parts_list && issue.parts_list.filter(p => p.name).length > 0 && (
+                            <div style={{ fontSize: '11px', color: '#333' }}>
+                              <span style={{ color: '#888' }}>Parts: </span>
+                              {issue.parts_list.filter(p => p.name).map((p, pi) => (
+                                <span key={pi}>{p.quantity ? `${p.quantity}x ` : ''}{p.name}{p.description ? ` (${p.description})` : ''}{pi < issue.parts_list.filter(p => p.name).length - 1 ? ', ' : ''}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
+                  ) : (
+                    <>
+                      {log.what_happened && (
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>What happened / Task</div>
+                          <div style={{ color: '#333', lineHeight: '1.5', padding: '6px 8px', background: '#fafafa', borderRadius: '6px' }}>{log.what_happened}</div>
+                        </div>
+                      )}
+                      {log.root_cause && (
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>Root cause</div>
+                          <div style={{ color: '#333', lineHeight: '1.5', padding: '6px 8px', background: '#fafafa', borderRadius: '6px' }}>{log.root_cause}</div>
+                        </div>
+                      )}
+                      {log.what_was_done && (
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ color: '#888', marginBottom: '2px', fontWeight: '500' }}>What was done</div>
+                          <div style={{ color: '#333', lineHeight: '1.5', padding: '6px 8px', background: '#fafafa', borderRadius: '6px' }}>{log.what_was_done}</div>
+                        </div>
+                      )}
+                      {log.parts_list && log.parts_list.filter(p => p.name).length > 0 && (
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ color: '#888', marginBottom: '4px', fontWeight: '500' }}>Parts used</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            {log.parts_list.filter(p => p.name).map((p, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#fafafa', borderRadius: '6px' }}>
+                                <span>{p.name}{p.description ? ` — ${p.description}` : ''}</span>
+                                {p.quantity && <span style={{ fontWeight: '500', color: '#185FA5' }}>qty: {p.quantity}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {log.follow_up_note && (

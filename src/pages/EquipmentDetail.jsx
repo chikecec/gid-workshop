@@ -205,7 +205,6 @@ export default function EquipmentDetail({ facility }) {
               </div>
             </div>
           ) : (
-            /* Single issue view */
             <>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>{tc.label}</span>
@@ -407,34 +406,32 @@ export default function EquipmentDetail({ facility }) {
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
               <div style={{ flex: 1 }}>
 
-                {/* What happened summary */}
+                {/* What happened */}
                 <div style={{ fontSize: '12px', fontWeight: '500', color: '#333', marginBottom: '4px' }}>
                   {hasMultipleIssues
                     ? `${log.issues.length} issues addressed`
                     : log.what_happened}
                 </div>
 
-                {/* Issue type badges */}
-                {hasMultipleIssues ? (
-                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                    {log.issues.map((issue, i) => {
+                {/* Service type bubbles — one per issue */}
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                  {hasMultipleIssues ? (
+                    log.issues.map((issue, i) => {
                       const itc = typeConfig[issue.log_type] || typeConfig.other
                       return (
                         <span key={i} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: itc.bg, color: itc.color, border: `1px solid ${itc.border}` }}>
-                          {i + 1}. {itc.label}
+                          Issue {i + 1}: {itc.label}
                         </span>
                       )
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: '4px' }}>
+                    })
+                  ) : (
                     <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: tc.bg, color: tc.color, border: `1px solid ${tc.border}` }}>
                       {tc.label}
                     </span>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* What was done */}
+                {/* What was done — single issue only */}
                 {!hasMultipleIssues && (
                   <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{log.what_was_done}</div>
                 )}

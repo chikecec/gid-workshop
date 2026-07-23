@@ -166,7 +166,6 @@ export default function Reports({ facility }) {
       }
       setLogs(filtered)
 
-      // Save to history
       if (saveToHistory && filtered.length > 0) {
         const totalHours = filtered.reduce((sum, log) => {
           if (!log.time_spent) return sum
@@ -213,7 +212,6 @@ export default function Reports({ facility }) {
     setLoadingReportId(report.id)
     setGenerated(false)
 
-    // Restore filters
     setFilter({
       rangeType: 'custom',
       startDate: report.date_from,
@@ -228,7 +226,6 @@ export default function Reports({ facility }) {
       equipmentTypes: report.filter_equipment_types || [],
     })
 
-    // Load the specific logs by ID
     const { data } = await supabase
       .from('repair_logs')
       .select('*, equipment(name, location, room_number, next_pm_date, model_number, serial_number, type)')
@@ -261,18 +258,6 @@ export default function Reports({ facility }) {
     const match = log.time_spent.match(/[\d.]+/)
     return sum + (match ? parseFloat(match[0]) : 0)
   }, 0)
-
-  const statusBreakdown = logs.reduce((acc, log) => {
-    const key = log.device_status || 'unknown'
-    acc[key] = (acc[key] || 0) + 1
-    return acc
-  }, {})
-
-  const serviceBreakdown = logs.reduce((acc, log) => {
-    const key = log.log_type || 'other'
-    acc[key] = (acc[key] || 0) + 1
-    return acc
-  }, {})
 
   const reportTitle = filter.technicianId === 'all'
     ? 'All Technicians'
@@ -509,8 +494,7 @@ export default function Reports({ facility }) {
                       {activeReportId === report.id && (
                         <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#185FA5', color: '#fff' }}>Viewing</span>
                       )}
-                      <button
-                        onClick={(e) => deleteReport(report.id, e)}
+                      <button onClick={(e) => deleteReport(report.id, e)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F09595', padding: '2px' }}>
                         <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                           <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
@@ -549,12 +533,13 @@ export default function Reports({ facility }) {
             </div>
           </div>
 
+          {/* Summary stats */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
             {[
               { label: 'Total jobs', value: logs.length, color: '#185FA5', bg: '#E6F1FB' },
               { label: 'Total hours', value: `${totalHours.toFixed(1)}h`, color: '#085041', bg: '#E1F5EE' },
               { label: 'Successful', value: logs.filter(l => l.device_status === 'successful').length, color: '#085041', bg: '#E1F5EE' },
-              { label: 'Pending', value: logs.filter(l => !['successful', 'failed', 'decommissioned'].includes(l.device_status)).length, color: '#854F0B', bg: '#FAEEDA' },
+              { label: 'Pending', value: logs.filter(l => l.device_status !== 'successful' && l.device_status !== 'decommissioned').length, color: '#854F0B', bg: '#FAEEDA' },
             ].map(s => (
               <div key={s.label} style={{ background: s.bg, borderRadius: '8px', padding: '10px 8px', textAlign: 'center' }}>
                 <div style={{ fontSize: '18px', fontWeight: '600', color: s.color }}>{s.value}</div>
@@ -563,25 +548,18 @@ export default function Reports({ facility }) {
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>By status</div>
-              {Object.entries(statusBreakdown).map(([status, count]) => (
-                <div key={status} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 8px', background: '#f9f9f9', borderRadius: '6px', fontSize: '11px', marginBottom: '3px' }}>
-                  <span>{statusLabels[status] || status}</span>
-                  <span style={{ fontWeight: '600' }}>{count}</span>
-                </div>
-              ))}
-            </div>
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>By service type</div>
-              {Object.entries(serviceBreakdown).map(([type, count]) => (
-                <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 8px', background: '#f9f9f9', borderRadius: '6px', fontSize: '11px', marginBottom: '3px' }}>
-                  <span>{serviceLabels[type] || type}</span>
-                  <span style={{ fontWeight: '600' }}>{count}</span>
-                </div>
-              ))}
-            </div>
+          {/* Outcome breakdown */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+            {[
+              { label: 'Successful', value: logs.filter(l => l.device_status === 'successful').length, color: '#085041', bg: '#E1F5EE' },
+              { label: 'Pending', value: logs.filter(l => l.device_status !== 'successful' && l.device_status !== 'decommissioned').length, color: '#854F0B', bg: '#FAEEDA' },
+              { label: 'Decommissioned', value: logs.filter(l => l.device_status === 'decommissioned').length, color: '#444', bg: '#f5f5f5' },
+            ].map(s => (
+              <div key={s.label} style={{ background: s.bg, borderRadius: '8px', padding: '10px 8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '18px', fontWeight: '600', color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: '10px', color: s.color, marginTop: '2px', opacity: 0.8 }}>{s.label}</div>
+              </div>
+            ))}
           </div>
 
           <div style={{ fontSize: '11px', fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>

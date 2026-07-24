@@ -86,6 +86,7 @@ export default function Schedule({ facility }) {
         acc[day].pmItems.push(e)
         if (e.status === 'overdue') acc[day].status = 'overdue'
         else if (e.status === 'due-soon' && acc[day].status !== 'overdue') acc[day].status = 'due-soon'
+        else if (e.status === 'upcoming' && acc[day].status !== 'overdue' && acc[day].status !== 'due-soon') acc[day].status = 'upcoming'
       }
       return acc
     }, {})
@@ -97,27 +98,40 @@ export default function Schedule({ facility }) {
     const d = new Date(r.reminder_date.split('T')[0] + 'T00:00:00')
     if (d.getMonth() === month && d.getFullYear() === year) {
       const day = d.getDate()
-      if (!allDaysInMonth[day]) allDaysInMonth[day] = { day, status: 'reminder', pmItems: [], reminderItems: [] }
+      const reminderDiff = getDaysUntil(r.reminder_date)
+      const reminderStatus = reminderDiff < 0 ? 'reminder-overdue' : 'reminder'
+      if (!allDaysInMonth[day]) allDaysInMonth[day] = { day, status: reminderStatus, pmItems: [], reminderItems: [] }
       allDaysInMonth[day].reminderItems.push(r)
-      // Reminders don't override PM overdue status
-      if (allDaysInMonth[day].status !== 'overdue' && allDaysInMonth[day].status !== 'due-soon') {
-        allDaysInMonth[day].status = 'reminder'
+      // Priority: overdue > reminder-overdue > due-soon > reminder > upcoming
+      if (allDaysInMonth[day].status !== 'overdue') {
+        if (reminderStatus === 'reminder-overdue' && allDaysInMonth[day].status !== 'overdue') {
+          allDaysInMonth[day].status = 'reminder-overdue'
+        } else if (reminderStatus === 'reminder' && allDaysInMonth[day].status !== 'overdue' && allDaysInMonth[day].status !== 'reminder-overdue' && allDaysInMonth[day].status !== 'due-soon') {
+          allDaysInMonth[day].status = 'reminder'
+        }
       }
     }
   })
+
+  const getDayDotColor = (dayData) => {
+    if (dayData.status === 'overdue') return '#E24B4A'
+    if (dayData.status === 'reminder-overdue') return '#E24B4A'
+    if (dayData.status === 'due-soon') return '#EF9F27'
+    if (dayData.status === 'reminder') return '#EF9F27'
+    if (dayData.status === 'upcoming') return '#bbb'
+    return null
+  }
 
   const overdue = equipment.filter(e => e.status === 'overdue')
   const dueSoon = equipment.filter(e => e.status === 'due-soon')
   const upcoming = equipment.filter(e => e.status === 'upcoming')
 
   const todayReminders = reminders.filter(r => {
-    if (!r.reminder_date) return false
     const d = getDaysUntil(r.reminder_date)
     return d !== null && d <= 0
   })
 
   const upcomingReminders = reminders.filter(r => {
-    if (!r.reminder_date) return false
     const d = getDaysUntil(r.reminder_date)
     return d !== null && d > 0
   })
@@ -134,13 +148,6 @@ export default function Schedule({ facility }) {
     d.setMonth(d.getMonth() + 1)
     setCurrentDate(d)
     setSelectedDay(null)
-  }
-
-  const getDayDotColor = (dayData) => {
-    if (dayData.status === 'overdue') return '#E24B4A'
-    if (dayData.status === 'due-soon') return '#EF9F27'
-    if (dayData.status === 'reminder') return '#EF9F27'
-    return '#aaa'
   }
 
   return (
@@ -178,6 +185,7 @@ export default function Schedule({ facility }) {
               const isToday = isCurrentMonth && day === todayDate.getDate()
               const dayData = allDaysInMonth[day]
               const isSelected = selectedDay === day
+              const dotCol = dayData ? getDayDotColor(dayData) : null
               return (
                 <div key={i}
                   onClick={() => dayData ? setSelectedDay(isSelected ? null : day) : null}
@@ -193,10 +201,10 @@ export default function Schedule({ facility }) {
                     color: isToday ? '#fff' : isSelected ? '#185FA5' : '#333',
                     fontWeight: isToday || isSelected ? '500' : '400'
                   }}>{day}</span>
-                  {dayData && !isToday && (
+                  {dotCol && !isToday && (
                     <div style={{
                       width: '4px', height: '4px', borderRadius: '50%',
-                      background: getDayDotColor(dayData),
+                      background: dotCol,
                       position: 'absolute', bottom: '3px'
                     }}/>
                   )}
@@ -211,8 +219,6 @@ export default function Schedule({ facility }) {
               <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '8px' }}>
                 {selectedDay} {currentDate.toLocaleDateString('en-GB', { month: 'long' })}
               </div>
-
-              {/* PM items */}
               {allDaysInMonth[selectedDay].pmItems.map(item => (
                 <div key={item.id}
                   onClick={() => navigate(`/equipment/${item.id}`)}
@@ -227,13 +233,11 @@ export default function Schedule({ facility }) {
                   </svg>
                 </div>
               ))}
-
-              {/* Reminder items */}
               {allDaysInMonth[selectedDay].reminderItems.map(reminder => (
                 <div key={reminder.id}
                   onClick={() => navigate(`/follow-up/${reminder.id}`)}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: '1px solid #f5f5f5', cursor: 'pointer' }}>
-                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#EF9F27', flexShrink: 0 }}/>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: getDaysUntil(reminder.reminder_date) < 0 ? '#E24B4A' : '#EF9F27', flexShrink: 0 }}/>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '12px', fontWeight: '500' }}>{reminder.equipment?.name}</div>
                     <div style={{ fontSize: '11px', color: '#888' }}>{reminder.reminder_note} · Follow-up</div>
@@ -247,11 +251,11 @@ export default function Schedule({ facility }) {
           )}
 
           {/* Legend */}
-          <div style={{ display: 'flex', gap: '14px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
             {[
-              { color: '#E24B4A', label: 'Overdue' },
-              { color: '#EF9F27', label: 'Due soon / Follow-up' },
-              { color: '#aaa', label: 'Upcoming' },
+              { color: '#E24B4A', label: 'Overdue PM or follow-up' },
+              { color: '#EF9F27', label: 'Due soon or follow-up pending' },
+              { color: '#bbb', label: 'Scheduled PM (>30 days)' },
               { color: '#185FA5', label: 'Today' },
             ].map(l => (
               <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -278,7 +282,7 @@ export default function Schedule({ facility }) {
           <>
             <div style={{ fontSize: '11px', fontWeight: '600', color: '#A32D2D', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#E24B4A' }}/>
-              Overdue — {overdue.length} device{overdue.length > 1 ? 's' : ''}
+              Overdue PM — {overdue.length} device{overdue.length > 1 ? 's' : ''}
             </div>
             {overdue.map(item => (
               <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
@@ -311,7 +315,7 @@ export default function Schedule({ facility }) {
           </>
         )}
 
-        {/* Pending follow-ups due */}
+        {/* Pending follow-ups due or overdue */}
         {todayReminders.length > 0 && (
           <>
             <div style={{ fontSize: '11px', fontWeight: '600', color: '#633806', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -320,27 +324,38 @@ export default function Schedule({ facility }) {
             </div>
             {todayReminders.map(reminder => (
               <div key={reminder.id} onClick={() => navigate(`/follow-up/${reminder.id}`)}
-                style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                style={{
+                  background: getDaysUntil(reminder.reminder_date) < 0 ? '#FCEBEB' : '#FAEEDA',
+                  border: `1px solid ${getDaysUntil(reminder.reminder_date) < 0 ? '#F09595' : '#EF9F27'}`,
+                  borderRadius: '12px', padding: '12px 14px', cursor: 'pointer'
+                }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#633806' }}>{reminder.equipment?.name}</div>
-                    <div style={{ fontSize: '11px', color: '#854F0B', opacity: 0.8, marginTop: '2px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: getDaysUntil(reminder.reminder_date) < 0 ? '#791F1F' : '#633806' }}>
+                      {reminder.equipment?.name}
+                    </div>
+                    <div style={{ fontSize: '11px', color: getDaysUntil(reminder.reminder_date) < 0 ? '#A32D2D' : '#854F0B', opacity: 0.8, marginTop: '2px' }}>
                       {reminder.equipment?.location}
                     </div>
                     {(reminder.equipment?.model_number || reminder.equipment?.serial_number) && (
                       <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
-                        {reminder.equipment?.model_number && <div style={{ fontSize: '11px', color: '#854F0B', opacity: 0.7 }}>Model: <span style={{ fontWeight: '500' }}>{reminder.equipment.model_number}</span></div>}
-                        {reminder.equipment?.serial_number && <div style={{ fontSize: '11px', color: '#854F0B', opacity: 0.7 }}>S/N: <span style={{ fontWeight: '500' }}>{reminder.equipment.serial_number}</span></div>}
+                        {reminder.equipment?.model_number && <div style={{ fontSize: '11px', color: getDaysUntil(reminder.reminder_date) < 0 ? '#A32D2D' : '#854F0B', opacity: 0.7 }}>Model: <span style={{ fontWeight: '500' }}>{reminder.equipment.model_number}</span></div>}
+                        {reminder.equipment?.serial_number && <div style={{ fontSize: '11px', color: getDaysUntil(reminder.reminder_date) < 0 ? '#A32D2D' : '#854F0B', opacity: 0.7 }}>S/N: <span style={{ fontWeight: '500' }}>{reminder.equipment.serial_number}</span></div>}
                       </div>
                     )}
                   </div>
-                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#854F0B', border: '1px solid #EF9F27', flexShrink: 0 }}>
-                    {getDaysUntil(reminder.reminder_date) < 0 ? 'Overdue' : 'Due today'}
+                  <span style={{
+                    fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff',
+                    color: getDaysUntil(reminder.reminder_date) < 0 ? '#A32D2D' : '#854F0B',
+                    border: `1px solid ${getDaysUntil(reminder.reminder_date) < 0 ? '#F09595' : '#EF9F27'}`,
+                    flexShrink: 0
+                  }}>
+                    {getDaysUntil(reminder.reminder_date) < 0 ? `${Math.abs(getDaysUntil(reminder.reminder_date))} days overdue` : 'Due today'}
                   </span>
                 </div>
-                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #EF9F27', display: 'flex', justifyContent: 'space-between' }}>
-                  <div style={{ fontSize: '11px', color: '#854F0B', opacity: 0.8 }}>{reminder.reminder_note}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#633806' }}>Resolve →</div>
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${getDaysUntil(reminder.reminder_date) < 0 ? '#F09595' : '#EF9F27'}`, display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '11px', color: getDaysUntil(reminder.reminder_date) < 0 ? '#A32D2D' : '#854F0B', opacity: 0.8 }}>{reminder.reminder_note}</div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: getDaysUntil(reminder.reminder_date) < 0 ? '#A32D2D' : '#633806' }}>Resolve →</div>
                 </div>
               </div>
             ))}
@@ -389,36 +404,36 @@ export default function Schedule({ facility }) {
         {upcomingReminders.length > 0 && (
           <>
             <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#aaa' }}/>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF9F27' }}/>
               Upcoming follow-ups — {upcomingReminders.length} item{upcomingReminders.length > 1 ? 's' : ''}
             </div>
             {upcomingReminders.map(reminder => (
               <div key={reminder.id} onClick={() => navigate(`/follow-up/${reminder.id}`)}
-                style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
+                style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '12px', padding: '12px 14px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#333' }}>{reminder.equipment?.name}</div>
-                    <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{reminder.equipment?.location}</div>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#633806' }}>{reminder.equipment?.name}</div>
+                    <div style={{ fontSize: '11px', color: '#854F0B', marginTop: '2px' }}>{reminder.equipment?.location}</div>
                   </div>
-                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee', flexShrink: 0 }}>
+                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fff', color: '#854F0B', border: '1px solid #EF9F27', flexShrink: 0 }}>
                     {getDaysUntil(reminder.reminder_date)}d away
                   </span>
                 </div>
-                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between' }}>
-                  <div style={{ fontSize: '11px', color: '#888' }}>{reminder.reminder_note}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#185FA5' }}>View →</div>
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #EF9F27', display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '11px', color: '#854F0B' }}>{reminder.reminder_note}</div>
+                  <div style={{ fontSize: '11px', fontWeight: '500', color: '#633806' }}>View →</div>
                 </div>
               </div>
             ))}
           </>
         )}
 
-        {/* Upcoming PMs */}
+        {/* Upcoming PMs beyond 30 days */}
         {upcoming.length > 0 && (
           <>
-            <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#aaa' }}/>
-              Upcoming PMs — {upcoming.length} device{upcoming.length > 1 ? 's' : ''}
+            <div style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#bbb' }}/>
+              Scheduled — {upcoming.length} device{upcoming.length > 1 ? 's' : ''} (more than 30 days away)
             </div>
             {upcoming.map(item => (
               <div key={item.id} onClick={() => navigate(`/equipment/${item.id}`)}
@@ -436,7 +451,7 @@ export default function Schedule({ facility }) {
                       </div>
                     )}
                   </div>
-                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee', flexShrink: 0 }}>
+                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#f5f5f5', color: '#888', border: '1px solid #ddd', flexShrink: 0 }}>
                     {getDaysUntil(item.next_pm_date)}d away
                   </span>
                 </div>

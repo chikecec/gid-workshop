@@ -91,6 +91,8 @@ export default function ResolveFollowUp({ facility }) {
   const [originalLog, setOriginalLog] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
   const [parts, setParts] = useState([{ name: '', quantity: '', description: '' }])
   const [form, setForm] = useState({
     logType: 'repair',
@@ -177,9 +179,18 @@ export default function ResolveFollowUp({ facility }) {
   const isDecommissioned = form.deviceStatus === 'decommissioned'
   const validParts = parts.filter(p => p.name.trim())
 
-  const canSave = form.whatHappened && form.whatWasDone && form.deviceStatus &&
-    (isDecommissioned || form.pmScheduleAction) &&
-    (!form.needsReminder || (getReminderDate() && (form.reminderNote || form.reminderNoteCustom)))
+  const getMissingFields = () => {
+    const missing = []
+    if (!form.whatHappened) missing.push('What happened')
+    if (!form.whatWasDone) missing.push('What was done')
+    if (!form.deviceStatus) missing.push('Status')
+    if (!isDecommissioned && !form.pmScheduleAction) missing.push('PM schedule')
+    if (form.needsReminder && !getReminderDate()) missing.push('Reminder date')
+    if (form.needsReminder && !form.reminderNote && !form.reminderNoteCustom) missing.push('Reminder note')
+    return missing
+  }
+
+  const canSave = getMissingFields().length === 0
 
   const nextOccurrenceDisplay = equipment
     ? new Date(getNextOccurrence(equipment.next_pm_date, equipment.interval_days) || Date.now())
@@ -192,79 +203,111 @@ export default function ResolveFollowUp({ facility }) {
     : null
 
   const handleSave = async () => {
-    if (!canSave) return
-    setSaving(true)
-
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single()
-
-    const nextPMDate = isDecommissioned ? null : getNextPMDate()
-    const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-    const partsWithQty = validParts.map(p => ({
-      ...p,
-      quantity: p.quantity ? parseInt(p.quantity) : null
-    }))
-    const partsUsedText = partsWithQty.map(p =>
-      `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
-    ).join(', ')
-
-    await supabase
-      .from('follow_up_reminders')
-      .update({ status: 'resolved' })
-      .eq('id', id)
-
-    const { data: newLog } = await supabase
-      .from('repair_logs')
-      .insert({
-        equipment_id: equipment.id,
-        facility_id: facility.id,
-        log_type: form.logType,
-        what_happened: form.whatHappened,
-        root_cause: form.rootCause,
-        what_was_done: form.whatWasDone,
-        parts_used: partsUsedText || null,
-        parts_list: partsWithQty.length > 0 ? partsWithQty : null,
-        time_spent: form.timeSpent || null,
-        device_status: form.deviceStatus,
-        billing_classification: form.billingClassification || null,
-        lpo_number: form.lpoNumber || null,
-        follow_up_note: form.engineerComment || null,
-        follow_up_date: getReminderDate(),
-        follow_up_reminder_note: reminderNote || null,
-        pm_schedule_action: form.pmScheduleAction || null,
-        reminder_status: form.needsReminder ? 'pending' : 'none',
-        technician_id: user.id,
-        technician_name: profile?.full_name || user.email,
-      })
-      .select()
-      .single()
-
-    await supabase
-      .from('equipment')
-      .update({
-        operational_status: form.deviceStatus,
-        next_pm_date: nextPMDate,
-        ...(form.logType === 'pm' ? { last_pm_date: new Date().toISOString().split('T')[0] } : {}),
-      })
-      .eq('id', equipment.id)
-
-    if (form.needsReminder && getReminderDate() && newLog) {
-      await supabase.from('follow_up_reminders').insert({
-        equipment_id: equipment.id,
-        facility_id: facility.id,
-        repair_log_id: newLog.id,
-        technician_id: user.id,
-        reminder_date: getReminderDate(),
-        reminder_note: reminderNote,
-        status: 'pending',
-      })
+    const missing = getMissingFields()
+    if (missing.length > 0) {
+      setError(`Please complete the following before saving: ${missing.join(', ')}`)
+      return
     }
 
-    navigate('/home')
+    setSaving(true)
+    setError('')
+
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw new Error('Could not get user: ' + userError.message)
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single()
+      if (profileError) throw new Error('Could not get profile: ' + profileError.message)
+
+      const nextPMDate = isDecommissioned ? null : getNextPMDate()
+      const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
+      const partsWithQty = validParts.map(p => ({
+        ...p,
+        quantity: p.quantity ? parseInt(p.quantity) : null
+      }))
+      const partsUsedText = partsWithQty.map(p =>
+        `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
+      ).join(', ')
+
+      // Step 1 — Save the new service log FIRST
+      const { data: newLog, error: logError } = await supabase
+        .from('repair_logs')
+        .insert({
+          equipment_id: equipment.id,
+          facility_id: facility.id,
+          log_type: form.logType,
+          what_happened: form.whatHappened,
+          root_cause: form.rootCause,
+          what_was_done: form.whatWasDone,
+          parts_used: partsUsedText || null,
+          parts_list: partsWithQty.length > 0 ? partsWithQty : null,
+          time_spent: form.timeSpent || null,
+          device_status: form.deviceStatus,
+          billing_classification: form.billingClassification || null,
+          lpo_number: form.lpoNumber || null,
+          follow_up_note: form.engineerComment || null,
+          follow_up_date: getReminderDate(),
+          follow_up_reminder_note: reminderNote || null,
+          pm_schedule_action: form.pmScheduleAction || null,
+          reminder_status: form.needsReminder ? 'pending' : 'none',
+          technician_id: user.id,
+          technician_name: profile?.full_name || user.email,
+        })
+        .select()
+        .single()
+
+      if (logError) throw new Error('Failed to save service log: ' + logError.message)
+      if (!newLog) throw new Error('Service log was not created — please try again.')
+
+      // Step 2 — Update equipment status and PM date
+      const { error: equipmentError } = await supabase
+        .from('equipment')
+        .update({
+          operational_status: form.deviceStatus,
+          next_pm_date: nextPMDate,
+          ...(form.logType === 'pm' ? { last_pm_date: new Date().toISOString().split('T')[0] } : {}),
+        })
+        .eq('id', equipment.id)
+
+      if (equipmentError) throw new Error('Failed to update equipment: ' + equipmentError.message)
+
+      // Step 3 — Mark reminder as resolved
+      const { error: reminderError } = await supabase
+        .from('follow_up_reminders')
+        .update({ status: 'resolved' })
+        .eq('id', id)
+
+      if (reminderError) throw new Error('Failed to mark reminder as resolved: ' + reminderError.message)
+
+      // Step 4 — Create new reminder if needed
+      if (form.needsReminder && getReminderDate()) {
+        const { error: newReminderError } = await supabase
+          .from('follow_up_reminders')
+          .insert({
+            equipment_id: equipment.id,
+            facility_id: facility.id,
+            repair_log_id: newLog.id,
+            technician_id: user.id,
+            reminder_date: getReminderDate(),
+            reminder_note: reminderNote,
+            status: 'pending',
+          })
+        if (newReminderError) throw new Error('Failed to create new reminder: ' + newReminderError.message)
+      }
+
+      // All steps succeeded
+      setSaved(true)
+      setTimeout(() => navigate('/home'), 1000)
+
+    } catch (err) {
+      console.error('ResolveFollowUp error:', err)
+      setError(err.message || 'Something went wrong. Please try again.')
+      setSaving(false)
+    }
   }
 
   if (loading) return (
@@ -273,6 +316,14 @@ export default function ResolveFollowUp({ facility }) {
 
   if (!reminder || !equipment) return (
     <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>Reminder not found</div>
+  )
+
+  if (saved) return (
+    <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+      <div style={{ fontSize: '40px', marginBottom: '12px' }}>✓</div>
+      <div style={{ fontSize: '15px', fontWeight: '500', color: '#085041', marginBottom: '6px' }}>Follow-up resolved</div>
+      <div style={{ fontSize: '12px', color: '#aaa' }}>Service log saved and equipment updated</div>
+    </div>
   )
 
   return (
@@ -408,9 +459,7 @@ export default function ResolveFollowUp({ facility }) {
                   </div>
                   <div style={{ width: '70px' }}>
                     <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px' }}>Qty</div>
-                    <input
-                      type="text"
-                      value={part.quantity}
+                    <input type="text" value={part.quantity}
                       onChange={e => updatePart(index, 'quantity', e.target.value)}
                       placeholder="e.g. 2"
                       style={{ width: '100%', padding: '7px 8px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', background: '#fff', textAlign: 'center', color: '#333' }}
@@ -650,6 +699,13 @@ export default function ResolveFollowUp({ facility }) {
           />
         </div>
 
+        {/* Error message */}
+        {error && (
+          <div style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#A32D2D', lineHeight: '1.6' }}>
+            ⚠️ {error}
+          </div>
+        )}
+
       </div>
 
       <div style={{ position: 'fixed', bottom: '70px', left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '430px', background: '#fff', borderTop: '1px solid #eee', padding: '12px 16px', display: 'flex', gap: '8px' }}>
@@ -657,8 +713,8 @@ export default function ResolveFollowUp({ facility }) {
           style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
           Cancel
         </button>
-        <button onClick={handleSave} disabled={!canSave || saving}
-          style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: canSave && !saving ? '#185FA5' : '#ccc', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: canSave && !saving ? 'pointer' : 'not-allowed' }}>
+        <button onClick={handleSave} disabled={saving}
+          style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: saving ? '#ccc' : '#185FA5', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer' }}>
           {saving ? 'Saving...' : 'Save & mark resolved'}
         </button>
       </div>

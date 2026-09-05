@@ -42,6 +42,38 @@ const typeConfig = {
   other: { label: 'Other', bg: '#f5f5f5', color: '#444', border: '#ddd', dot: '#aaa' },
 }
 
+function getStatusColor(status) {
+  if (status === 'successful' || status === 'working') return { color: '#085041', bg: '#E1F5EE', border: '#5DCAA5' }
+  if (status === 'failed' || status === 'out-of-service') return { color: '#791F1F', bg: '#FCEBEB', border: '#F09595' }
+  if (status === 'decommissioned') return { color: '#444', bg: '#f5f5f5', border: '#ddd' }
+  return { color: '#633806', bg: '#FAEEDA', border: '#EF9F27' }
+}
+
+function getStatusDot(status) {
+  if (status === 'successful' || status === 'working') return '#1D9E75'
+  if (status === 'failed' || status === 'out-of-service') return '#E24B4A'
+  if (status === 'decommissioned') return '#aaa'
+  return '#EF9F27'
+}
+
+function StatusTransition({ previous, current }) {
+  const prev = getStatusColor(previous || 'working')
+  const curr = getStatusColor(current)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: prev.bg, color: prev.color, border: `1px solid ${prev.border}` }}>
+        {statusLabels[previous] || previous || 'Working'}
+      </span>
+      <svg width="12" height="12" fill="none" stroke="#aaa" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: curr.bg, color: curr.color, border: `1px solid ${curr.border}` }}>
+        {statusLabels[current] || current}
+      </span>
+    </div>
+  )
+}
+
 export default function EquipmentDetail({ facility }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -94,7 +126,6 @@ export default function EquipmentDetail({ facility }) {
     <div style={{ padding: '40px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>Equipment not found</div>
   )
 
-  // Log detail view
   if (selectedLog) {
     const log = logs.find(l => l.id === selectedLog)
     if (!log) return null
@@ -140,20 +171,11 @@ export default function EquipmentDetail({ facility }) {
             <span style={{ fontSize: '11px', color: '#aaa' }}>{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
           </div>
 
-          {/* Overall status */}
-          {log.device_status && (
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Overall status</div>
-              <span style={{
-                fontSize: '11px', padding: '3px 10px', borderRadius: '99px',
-                background: log.device_status === 'successful' ? '#E1F5EE' : log.device_status === 'decommissioned' ? '#f5f5f5' : '#FAEEDA',
-                color: log.device_status === 'successful' ? '#085041' : log.device_status === 'decommissioned' ? '#444' : '#633806',
-                border: `1px solid ${log.device_status === 'successful' ? '#5DCAA5' : log.device_status === 'decommissioned' ? '#ddd' : '#EF9F27'}`
-              }}>
-                {statusLabels[log.device_status] || log.device_status}
-              </span>
-            </div>
-          )}
+          {/* Status transition — always shown */}
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Status</div>
+            <StatusTransition previous={log.previous_status} current={log.device_status} />
+          </div>
 
           {/* Multiple issues breakdown */}
           {hasMultipleIssues ? (
@@ -175,21 +197,9 @@ export default function EquipmentDetail({ facility }) {
                           </span>
                         )}
                       </div>
-                      {issue.what_happened && (
-                        <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}>
-                          <span style={{ color: '#888', fontSize: '11px' }}>What happened: </span>{issue.what_happened}
-                        </div>
-                      )}
-                      {issue.root_cause && (
-                        <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}>
-                          <span style={{ color: '#888', fontSize: '11px' }}>Root cause: </span>{issue.root_cause}
-                        </div>
-                      )}
-                      {issue.what_was_done && (
-                        <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}>
-                          <span style={{ color: '#888', fontSize: '11px' }}>What was done: </span>{issue.what_was_done}
-                        </div>
-                      )}
+                      {issue.what_happened && <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}><span style={{ color: '#888', fontSize: '11px' }}>What happened: </span>{issue.what_happened}</div>}
+                      {issue.root_cause && <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}><span style={{ color: '#888', fontSize: '11px' }}>Root cause: </span>{issue.root_cause}</div>}
+                      {issue.what_was_done && <div style={{ fontSize: '12px', color: '#333', marginBottom: '4px' }}><span style={{ color: '#888', fontSize: '11px' }}>What was done: </span>{issue.what_was_done}</div>}
                       {issue.parts_list && issue.parts_list.filter(p => p.name).length > 0 && (
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
                           {issue.parts_list.filter(p => p.name).map((p, pi) => (
@@ -249,7 +259,7 @@ export default function EquipmentDetail({ facility }) {
             </>
           )}
 
-          {/* Key fields — log level */}
+          {/* Key fields */}
           <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '4px 12px' }}>
             {[
               { label: 'Time spent', value: log.time_spent || '—' },
@@ -262,7 +272,6 @@ export default function EquipmentDetail({ facility }) {
             ))}
           </div>
 
-          {/* Engineer comment */}
           {log.follow_up_note && (
             <div>
               <div style={{ fontSize: '11px', fontWeight: '500', color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Engineer comment</div>
@@ -270,7 +279,6 @@ export default function EquipmentDetail({ facility }) {
             </div>
           )}
 
-          {/* Follow-up reminder */}
           {log.follow_up_reminder_note && (
             <div style={{ background: '#FAEEDA', border: '1px solid #EF9F27', borderRadius: '8px', padding: '10px 12px' }}>
               <div style={{ fontSize: '11px', fontWeight: '500', color: '#633806', marginBottom: '3px' }}>Follow-up reminder</div>
@@ -398,15 +406,16 @@ export default function EquipmentDetail({ facility }) {
         {logs.map(log => {
           const tc = typeConfig[log.log_type] || typeConfig.other
           const hasMultipleIssues = log.issues && log.issues.length > 1
+          const dotCol = getStatusDot(log.device_status)
 
           return (
             <div key={log.id}
               onClick={() => setSelectedLog(log.id)}
               style={{ background: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '10px 12px', cursor: 'pointer', display: 'flex', gap: '10px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: tc.dot, flexShrink: 0, marginTop: '4px' }}/>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotCol, flexShrink: 0, marginTop: '4px' }}/>
               <div style={{ flex: 1 }}>
 
-                {/* What happened / issues summary */}
+                {/* What happened */}
                 <div style={{ fontSize: '12px', fontWeight: '500', color: '#333', marginBottom: '2px' }}>
                   {hasMultipleIssues ? `${log.issues.length} issues addressed` : log.what_happened}
                 </div>
@@ -418,24 +427,19 @@ export default function EquipmentDetail({ facility }) {
                     : tc.label}
                 </div>
 
-                {/* What was done — single issue only */}
-                {!hasMultipleIssues && (
-                  <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{log.what_was_done}</div>
-                )}
+                {/* Status transition */}
+                <div style={{ marginBottom: '4px' }}>
+                  <StatusTransition previous={log.previous_status} current={log.device_status} />
+                </div>
 
-                {/* Status bubble + follow-up only */}
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {log.device_status && (
-                    <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#f5f5f5', color: '#666', border: '1px solid #eee' }}>
-                      {statusLabels[log.device_status] || log.device_status}
-                    </span>
-                  )}
-                  {log.follow_up_reminder_note && (
+                {/* Follow-up */}
+                {log.follow_up_reminder_note && (
+                  <div style={{ marginBottom: '4px' }}>
                     <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '99px', background: '#FAEEDA', color: '#633806', border: '1px solid #EF9F27' }}>
                       Follow-up set
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>{log.technician_name}</div>
               </div>

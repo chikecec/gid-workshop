@@ -44,14 +44,6 @@ const billingOptions = [
   { key: 'placement-machine', label: 'Placement machine' },
 ]
 
-const serviceTypes = [
-  { key: 'pm', label: 'Preventive Maintenance (PM)' },
-  { key: 'repair', label: 'Breakdown Repair' },
-  { key: 'assessment', label: 'Assessment' },
-  { key: 'installation', label: 'Installation' },
-  { key: 'other', label: 'Other' },
-]
-
 function emptyIssue() {
   return {
     logType: '',
@@ -134,16 +126,13 @@ export default function AddLog({ facility }) {
     set('pmScheduleAction', '')
   }
 
-  // Issue management
   const updateIssue = (index, key, val) => {
     setIssues(prev => prev.map((issue, i) => i === index ? { ...issue, [key]: val } : issue))
   }
 
   const addIssue = () => setIssues(prev => [...prev, emptyIssue()])
-
   const removeIssue = (index) => setIssues(prev => prev.filter((_, i) => i !== index))
 
-  // Parts management per issue
   const addPart = (issueIndex) => {
     setIssues(prev => prev.map((issue, i) => i === issueIndex
       ? { ...issue, parts: [...issue.parts, { name: '', quantity: '', description: '' }] }
@@ -160,10 +149,7 @@ export default function AddLog({ facility }) {
 
   const updatePart = (issueIndex, partIndex, field, value) => {
     setIssues(prev => prev.map((issue, i) => i === issueIndex
-      ? {
-          ...issue,
-          parts: issue.parts.map((p, pi) => pi === partIndex ? { ...p, [field]: value } : p)
-        }
+      ? { ...issue, parts: issue.parts.map((p, pi) => pi === partIndex ? { ...p, [field]: value } : p) }
       : issue
     ))
   }
@@ -197,113 +183,141 @@ export default function AddLog({ facility }) {
 
   const isDecommissioned = form.deviceStatus === 'decommissioned'
 
-  const canSave = form.equipmentId &&
-    issues.every(issue => issue.logType && issue.whatHappened && issue.whatWasDone) &&
-    form.deviceStatus && (isDecommissioned || form.pmScheduleAction) &&
-    (!form.needsReminder || (getReminderDate() && (form.reminderNote || form.reminderNoteCustom)))
+  const getMissingFields = () => {
+    const missing = []
+    if (!form.equipmentId) missing.push('Device')
+    if (issues.some(i => !i.logType)) missing.push('Service type for all issues')
+    if (issues.some(i => !i.whatHappened)) missing.push('What happened for all issues')
+    if (issues.some(i => !i.whatWasDone)) missing.push('What was done for all issues')
+    if (!form.deviceStatus) missing.push('Overall status')
+    if (!isDecommissioned && !form.pmScheduleAction) missing.push('PM schedule')
+    if (form.needsReminder && !getReminderDate()) missing.push('Reminder date')
+    if (form.needsReminder && !form.reminderNote && !form.reminderNoteCustom) missing.push('Reminder note')
+    return missing
+  }
+
+  const canSave = getMissingFields().length === 0
 
   const handleSave = async () => {
-    if (!canSave) return
-    setSaving(true)
-    setError('')
-
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single()
-
-    const nextPMDate = isDecommissioned ? null : getNextPMDate()
-    const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
-
-    // Build issues payload
-    const issuesPayload = issues.map((issue, i) => {
-      const validParts = issue.parts.filter(p => p.name.trim())
-      const partsWithQty = validParts.map(p => ({
-        ...p,
-        quantity: p.quantity ? parseInt(p.quantity) : null
-      }))
-      return {
-        issue_number: i + 1,
-        log_type: issue.logType,
-        what_happened: issue.whatHappened,
-        root_cause: issue.rootCause || null,
-        what_was_done: issue.whatWasDone,
-        billing_classification: issue.billingClassification || null,
-        parts_list: partsWithQty.length > 0 ? partsWithQty : null,
-        parts_used: partsWithQty.map(p =>
-          `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
-        ).join(', ') || null,
-      }
-    })
-
-    // Use first issue for top-level fields (for backwards compatibility)
-    const primaryIssue = issuesPayload[0]
-
-    const { data: log, error: logError } = await supabase
-      .from('repair_logs')
-      .insert({
-        equipment_id: form.equipmentId,
-        facility_id: facility.id,
-        log_type: primaryIssue.log_type,
-        what_happened: issues.length === 1
-          ? primaryIssue.what_happened
-          : issuesPayload.map((issue, i) => `Issue ${i + 1}: ${issue.what_happened}`).join('\n\n'),
-        root_cause: issues.length === 1
-          ? primaryIssue.root_cause
-          : issuesPayload.filter(i => i.root_cause).map((issue, i) => `Issue ${issue.issue_number}: ${issue.root_cause}`).join('\n\n'),
-        what_was_done: issues.length === 1
-          ? primaryIssue.what_was_done
-          : issuesPayload.map((issue, i) => `Issue ${i + 1}: ${issue.what_was_done}`).join('\n\n'),
-        parts_list: issuesPayload.flatMap(i => i.parts_list || []),
-        parts_used: issuesPayload.map(i => i.parts_used).filter(Boolean).join('; ') || null,
-        billing_classification: primaryIssue.billing_classification,
-        issues: issuesPayload,
-        time_spent: form.timeSpent || null,
-        device_status: form.deviceStatus,
-        lpo_number: form.lpoNumber || null,
-        outcome: primaryIssue.log_type,
-        follow_up_note: form.followUpNote || null,
-        follow_up_date: getReminderDate(),
-        follow_up_reminder_note: reminderNote || null,
-        pm_schedule_action: form.pmScheduleAction || null,
-        reminder_status: form.needsReminder ? 'pending' : 'none',
-        technician_id: user.id,
-        technician_name: profile?.full_name || user.email,
-      })
-      .select()
-      .single()
-
-    if (logError) {
-      setError('Error saving: ' + logError.message)
-      setSaving(false)
+    const missing = getMissingFields()
+    if (missing.length > 0) {
+      setError(`Please complete the following: ${missing.join(', ')}`)
       return
     }
 
-    await supabase
-      .from('equipment')
-      .update({
-        operational_status: form.deviceStatus,
-        next_pm_date: nextPMDate,
-        ...(issues.some(i => i.logType === 'pm') ? { last_pm_date: new Date().toISOString().split('T')[0] } : {}),
-      })
-      .eq('id', form.equipmentId)
+    setSaving(true)
+    setError('')
 
-    if (form.needsReminder && getReminderDate()) {
-      await supabase.from('follow_up_reminders').insert({
-        equipment_id: form.equipmentId,
-        facility_id: facility.id,
-        repair_log_id: log.id,
-        technician_id: user.id,
-        reminder_date: getReminderDate(),
-        reminder_note: reminderNote,
-        status: 'pending',
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single()
+
+      // Capture previous status before saving
+      const previousStatus = selectedEquipment?.operational_status || 'working'
+
+      const nextPMDate = isDecommissioned ? null : getNextPMDate()
+      const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
+
+      const issuesPayload = issues.map((issue, i) => {
+        const validParts = issue.parts.filter(p => p.name.trim())
+        const partsWithQty = validParts.map(p => ({ ...p, quantity: p.quantity ? parseInt(p.quantity) : null }))
+        return {
+          issue_number: i + 1,
+          log_type: issue.logType,
+          what_happened: issue.whatHappened,
+          root_cause: issue.rootCause || null,
+          what_was_done: issue.whatWasDone,
+          billing_classification: issue.billingClassification || null,
+          parts_list: partsWithQty.length > 0 ? partsWithQty : null,
+          parts_used: partsWithQty.map(p =>
+            `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
+          ).join(', ') || null,
+        }
       })
+
+      const primaryIssue = issuesPayload[0]
+
+      const { data: log, error: logError } = await supabase
+        .from('repair_logs')
+        .insert({
+          equipment_id: form.equipmentId,
+          facility_id: facility.id,
+          log_type: primaryIssue.log_type,
+          what_happened: issues.length === 1
+            ? primaryIssue.what_happened
+            : issuesPayload.map((issue, i) => `Issue ${i + 1}: ${issue.what_happened}`).join('\n\n'),
+          root_cause: issues.length === 1
+            ? primaryIssue.root_cause
+            : issuesPayload.filter(i => i.root_cause).map(issue => `Issue ${issue.issue_number}: ${issue.root_cause}`).join('\n\n'),
+          what_was_done: issues.length === 1
+            ? primaryIssue.what_was_done
+            : issuesPayload.map((issue, i) => `Issue ${i + 1}: ${issue.what_was_done}`).join('\n\n'),
+          parts_list: issuesPayload.flatMap(i => i.parts_list || []),
+          parts_used: issuesPayload.map(i => i.parts_used).filter(Boolean).join('; ') || null,
+          billing_classification: primaryIssue.billing_classification,
+          issues: issuesPayload,
+          time_spent: form.timeSpent || null,
+          device_status: form.deviceStatus,
+          previous_status: previousStatus,
+          lpo_number: form.lpoNumber || null,
+          outcome: primaryIssue.log_type,
+          follow_up_note: form.followUpNote || null,
+          follow_up_date: getReminderDate(),
+          follow_up_reminder_note: reminderNote || null,
+          pm_schedule_action: form.pmScheduleAction || null,
+          reminder_status: form.needsReminder ? 'pending' : 'none',
+          technician_id: user.id,
+          technician_name: profile?.full_name || user.email,
+        })
+        .select()
+        .single()
+
+      if (logError) throw new Error('Failed to save log: ' + logError.message)
+      if (!log) throw new Error('Log was not created — please try again.')
+
+      const { error: equipmentError } = await supabase
+        .from('equipment')
+        .update({
+          operational_status: form.deviceStatus,
+          next_pm_date: nextPMDate,
+          ...(issues.some(i => i.logType === 'pm') ? { last_pm_date: new Date().toISOString().split('T')[0] } : {}),
+        })
+        .eq('id', form.equipmentId)
+
+      if (equipmentError) throw new Error('Failed to update equipment: ' + equipmentError.message)
+
+      if (form.needsReminder && getReminderDate()) {
+        await supabase.from('follow_up_reminders').insert({
+          equipment_id: form.equipmentId,
+          facility_id: facility.id,
+          repair_log_id: log.id,
+          technician_id: user.id,
+          reminder_date: getReminderDate(),
+          reminder_note: reminderNote,
+          status: 'pending',
+        })
+      }
+
+      navigate(-1)
+
+    } catch (err) {
+      console.error('AddLog error:', err)
+      setError(err.message || 'Something went wrong. Please try again.')
+      setSaving(false)
     }
-
-    navigate(-1)
   }
+
+  const serviceTypes = [
+    { key: 'pm', label: 'Preventive Maintenance (PM)' },
+    { key: 'repair', label: 'Breakdown Repair' },
+    { key: 'assessment', label: 'Assessment' },
+    { key: 'installation', label: 'Installation' },
+    { key: 'other', label: 'Other' },
+  ]
 
   return (
     <div>
@@ -337,7 +351,6 @@ export default function AddLog({ facility }) {
         {issues.map((issue, issueIndex) => (
           <div key={issueIndex} style={{ background: '#f9f9f9', border: '1px solid #eee', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-            {/* Issue header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#185FA5' }}>
                 {issues.length > 1 ? `Issue ${issueIndex + 1}` : 'Service details'}
@@ -380,12 +393,7 @@ export default function AddLog({ facility }) {
               </div>
               <textarea value={issue.whatHappened}
                 onChange={e => updateIssue(issueIndex, 'whatHappened', e.target.value)}
-                placeholder={
-                  issue.logType === 'pm' ? 'Describe what was checked and found during PM...' :
-                  issue.logType === 'assessment' ? 'Describe the assessment findings...' :
-                  issue.logType === 'installation' ? 'Describe the installation...' :
-                  'Describe the fault or symptom...'
-                }
+                placeholder="Describe the fault or symptom..."
                 rows={3}
                 style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
               />
@@ -409,12 +417,7 @@ export default function AddLog({ facility }) {
               </div>
               <textarea value={issue.whatWasDone}
                 onChange={e => updateIssue(issueIndex, 'whatWasDone', e.target.value)}
-                placeholder={
-                  issue.logType === 'pm' ? 'Describe the PM steps completed...' :
-                  issue.logType === 'assessment' ? 'Describe assessment steps and recommendations...' :
-                  issue.logType === 'installation' ? 'Describe what was installed and configured...' :
-                  'Describe the repair or action taken...'
-                }
+                placeholder="Describe the repair or action taken..."
                 rows={3}
                 style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', outline: 'none', resize: 'vertical', lineHeight: '1.5', color: '#333', background: '#fff' }}
               />
@@ -507,7 +510,7 @@ export default function AddLog({ facility }) {
           Add another issue
         </button>
 
-        {/* Time spent — log level */}
+        {/* Time spent */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             Total time spent <span style={{ color: '#aaa', fontWeight: '400' }}>(excluding travel)</span>
@@ -519,7 +522,7 @@ export default function AddLog({ facility }) {
           </select>
         </div>
 
-        {/* LPO number — log level */}
+        {/* LPO number */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '5px' }}>
             LPO / Invoice number <span style={{ color: '#aaa', fontWeight: '400' }}>(optional)</span>
@@ -532,12 +535,14 @@ export default function AddLog({ facility }) {
 
         {/* Overall status */}
         <div>
-          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
+          <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '4px' }}>
             Overall status <span style={{ color: '#E24B4A' }}>*</span>
           </div>
-          <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '8px' }}>
-            The overall outcome of this visit
-          </div>
+          {selectedEquipment?.operational_status && (
+            <div style={{ fontSize: '11px', color: '#888', marginBottom: '8px' }}>
+              Current status: <span style={{ fontWeight: '500', color: '#333' }}>{selectedEquipment.operational_status}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {statusOptions.map(s => (
               <button key={s.key} onClick={() => set('deviceStatus', s.key)}
@@ -634,7 +639,6 @@ export default function AddLog({ facility }) {
               PM schedule <span style={{ color: '#E24B4A' }}>*</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-
               <div onClick={() => set('pmScheduleAction', 'keep')}
                 style={{ background: form.pmScheduleAction === 'keep' ? '#E1F5EE' : '#fff', border: `1px solid ${form.pmScheduleAction === 'keep' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'keep' ? '#085041' : '#333' }}>Continue on original schedule</div>
@@ -642,7 +646,6 @@ export default function AddLog({ facility }) {
                   {nextOccurrenceDisplay ? `Next PM: ${nextOccurrenceDisplay}` : 'Next future date in the original cycle'}
                 </div>
               </div>
-
               <div onClick={() => set('pmScheduleAction', 'recalculate')}
                 style={{ background: form.pmScheduleAction === 'recalculate' ? '#E6F1FB' : '#fff', border: `1px solid ${form.pmScheduleAction === 'recalculate' ? '#85B7EB' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'recalculate' ? '#0C447C' : '#333' }}>Reset from today</div>
@@ -652,7 +655,6 @@ export default function AddLog({ facility }) {
                     : 'Recalculate based on interval'}
                 </div>
               </div>
-
               <div onClick={() => set('pmScheduleAction', 'custom')}
                 style={{ background: form.pmScheduleAction === 'custom' ? '#FAEEDA' : '#fff', border: `1px solid ${form.pmScheduleAction === 'custom' ? '#EF9F27' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'custom' ? '#633806' : '#333' }}>Set a custom date</div>
@@ -674,7 +676,6 @@ export default function AddLog({ facility }) {
                   </div>
                 )}
               </div>
-
             </div>
           </div>
         )}
@@ -698,8 +699,8 @@ export default function AddLog({ facility }) {
         </div>
 
         {error && (
-          <div style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#A32D2D' }}>
-            {error}
+          <div style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#A32D2D', lineHeight: '1.6' }}>
+            ⚠️ {error}
           </div>
         )}
 
@@ -710,8 +711,8 @@ export default function AddLog({ facility }) {
           style={{ flex: 1, padding: '11px', borderRadius: '8px', border: '1px solid #ddd', background: '#f5f5f5', fontSize: '13px', fontWeight: '500', color: '#666', cursor: 'pointer' }}>
           Cancel
         </button>
-        <button onClick={handleSave} disabled={!canSave || saving}
-          style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: canSave && !saving ? '#185FA5' : '#ccc', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: canSave && !saving ? 'pointer' : 'not-allowed' }}>
+        <button onClick={handleSave} disabled={saving}
+          style={{ flex: 2, padding: '11px', borderRadius: '8px', border: 'none', background: saving ? '#ccc' : '#185FA5', fontSize: '13px', fontWeight: '500', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer' }}>
           {saving ? 'Saving...' : 'Save log'}
         </button>
       </div>

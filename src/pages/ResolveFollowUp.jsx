@@ -190,8 +190,6 @@ export default function ResolveFollowUp({ facility }) {
     return missing
   }
 
-  const canSave = getMissingFields().length === 0
-
   const nextOccurrenceDisplay = equipment
     ? new Date(getNextOccurrence(equipment.next_pm_date, equipment.interval_days) || Date.now())
         .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -223,6 +221,9 @@ export default function ResolveFollowUp({ facility }) {
         .single()
       if (profileError) throw new Error('Could not get profile: ' + profileError.message)
 
+      // Capture previous status before saving
+      const previousStatus = equipment?.operational_status || 'working'
+
       const nextPMDate = isDecommissioned ? null : getNextPMDate()
       const reminderNote = form.reminderNote === 'Other' ? form.reminderNoteCustom : form.reminderNote
       const partsWithQty = validParts.map(p => ({
@@ -233,7 +234,7 @@ export default function ResolveFollowUp({ facility }) {
         `${p.quantity ? `${p.quantity}x ` : ''}${p.name}${p.description ? ` (${p.description})` : ''}`
       ).join(', ')
 
-      // Step 1 — Save the new service log FIRST
+      // Step 1 — Save new service log first
       const { data: newLog, error: logError } = await supabase
         .from('repair_logs')
         .insert({
@@ -247,8 +248,10 @@ export default function ResolveFollowUp({ facility }) {
           parts_list: partsWithQty.length > 0 ? partsWithQty : null,
           time_spent: form.timeSpent || null,
           device_status: form.deviceStatus,
+          previous_status: previousStatus,
           billing_classification: form.billingClassification || null,
           lpo_number: form.lpoNumber || null,
+          outcome: form.logType,
           follow_up_note: form.engineerComment || null,
           follow_up_date: getReminderDate(),
           follow_up_reminder_note: reminderNote || null,
@@ -299,9 +302,8 @@ export default function ResolveFollowUp({ facility }) {
         if (newReminderError) throw new Error('Failed to create new reminder: ' + newReminderError.message)
       }
 
-      // All steps succeeded
       setSaved(true)
-      setTimeout(() => navigate('/home'), 1000)
+      setTimeout(() => navigate('/home'), 1500)
 
     } catch (err) {
       console.error('ResolveFollowUp error:', err)
@@ -322,7 +324,7 @@ export default function ResolveFollowUp({ facility }) {
     <div style={{ padding: '60px 20px', textAlign: 'center' }}>
       <div style={{ fontSize: '40px', marginBottom: '12px' }}>✓</div>
       <div style={{ fontSize: '15px', fontWeight: '500', color: '#085041', marginBottom: '6px' }}>Follow-up resolved</div>
-      <div style={{ fontSize: '12px', color: '#aaa' }}>Service log saved and equipment updated</div>
+      <div style={{ fontSize: '12px', color: '#aaa' }}>Service log saved and equipment status updated</div>
     </div>
   )
 
@@ -348,6 +350,11 @@ export default function ResolveFollowUp({ facility }) {
             <div style={{ display: 'flex', gap: '10px', marginTop: '2px' }}>
               {equipment.model_number && <div style={{ fontSize: '11px', color: '#888' }}>Model: <span style={{ fontWeight: '500', color: '#444' }}>{equipment.model_number}</span></div>}
               {equipment.serial_number && <div style={{ fontSize: '11px', color: '#888' }}>S/N: <span style={{ fontWeight: '500', color: '#444' }}>{equipment.serial_number}</span></div>}
+            </div>
+          )}
+          {equipment.operational_status && (
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+              Current status: <span style={{ fontWeight: '500', color: '#333' }}>{statusLabels[equipment.operational_status] || equipment.operational_status}</span>
             </div>
           )}
         </div>
@@ -540,7 +547,7 @@ export default function ResolveFollowUp({ facility }) {
         {/* Status */}
         <div>
           <div style={{ fontSize: '11px', fontWeight: '500', color: '#666', marginBottom: '6px' }}>
-            Status <span style={{ color: '#E24B4A' }}>*</span>
+            New status <span style={{ color: '#E24B4A' }}>*</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {statusOptions.map(s => (
@@ -638,7 +645,6 @@ export default function ResolveFollowUp({ facility }) {
               PM schedule <span style={{ color: '#E24B4A' }}>*</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-
               <div onClick={() => set('pmScheduleAction', 'keep')}
                 style={{ background: form.pmScheduleAction === 'keep' ? '#E1F5EE' : '#fff', border: `1px solid ${form.pmScheduleAction === 'keep' ? '#5DCAA5' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'keep' ? '#085041' : '#333' }}>Continue on original schedule</div>
@@ -646,7 +652,6 @@ export default function ResolveFollowUp({ facility }) {
                   {nextOccurrenceDisplay ? `Next PM: ${nextOccurrenceDisplay}` : 'Next future date in the original cycle'}
                 </div>
               </div>
-
               <div onClick={() => set('pmScheduleAction', 'recalculate')}
                 style={{ background: form.pmScheduleAction === 'recalculate' ? '#E6F1FB' : '#fff', border: `1px solid ${form.pmScheduleAction === 'recalculate' ? '#85B7EB' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'recalculate' ? '#0C447C' : '#333' }}>Reset from today</div>
@@ -654,7 +659,6 @@ export default function ResolveFollowUp({ facility }) {
                   {resetFromTodayDisplay ? `Sets next PM to ${resetFromTodayDisplay} (${equipment.interval_days} days from today)` : 'Recalculate based on interval'}
                 </div>
               </div>
-
               <div onClick={() => set('pmScheduleAction', 'custom')}
                 style={{ background: form.pmScheduleAction === 'custom' ? '#FAEEDA' : '#fff', border: `1px solid ${form.pmScheduleAction === 'custom' ? '#EF9F27' : '#eee'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ fontSize: '12px', fontWeight: '500', color: form.pmScheduleAction === 'custom' ? '#633806' : '#333' }}>Set a custom date</div>
@@ -676,7 +680,6 @@ export default function ResolveFollowUp({ facility }) {
                   </div>
                 )}
               </div>
-
             </div>
           </div>
         )}
@@ -699,7 +702,6 @@ export default function ResolveFollowUp({ facility }) {
           />
         </div>
 
-        {/* Error message */}
         {error && (
           <div style={{ background: '#FCEBEB', border: '1px solid #F09595', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#A32D2D', lineHeight: '1.6' }}>
             ⚠️ {error}
